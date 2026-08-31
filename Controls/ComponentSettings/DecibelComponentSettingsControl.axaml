@@ -1,17 +1,3 @@
-﻿<!-- 
-    <ci:ComponentBase> 是一个用户控件基类，用于定义组件设置界面。
-    
-    参数:
-        x:Class - 指定该控件的完整类型名称，包括命名空间。
-                  此处为 "Decibel_Monitor.Controls.ComponentSettings.DecibelComponentSettingsControl"
-        x:TypeArguments - 泛型参数，指定绑定的数据模型类型。
-                          这里是 componentSettingsModel:DecibelComponentSettings
-        
-    功能:
-        提供一个可滚动的设置面板，允许用户配置与分贝显示相关的组件设置，
-        包括图片路径和圆角半径两个选项。
--->
-
 <ci:ComponentBase
     x:Class="Decibel_Monitor.Controls.ComponentSettings.DecibelComponentSettingsControl"
     x:TypeArguments="componentSettingsModel:DecibelComponentSettings"
@@ -29,22 +15,51 @@
     <ScrollViewer
         DataContext="{Binding RelativeSource={RelativeSource Mode=FindAncestor, AncestorType={x:Type local:DecibelComponentSettingsControl}}}">
         <StackPanel Classes="settings-container animated-intro" Margin="12" Spacing="8">
+            <!-- 校准区域 -->
             <TextBlock FontSize="14" FontWeight="Bold" Text="校准（Calibration）" Margin="0,0,0,4"/>
 
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="8">
                 <TextBlock VerticalAlignment="Center" Width="88" Text="参考（dB）" />
-                <!-- 用户可输入物理/显示 dB（0~150），内部会转换为 dBFS -->
+                <!-- 用户可输入显示 dB（0~150），内部会转换为 dBFS -->
                 <Slider Width="260" Minimum="0" Maximum="150" Value="{Binding ReferenceDecibel, Mode=TwoWay}" TickFrequency="1" />
                 <TextBlock VerticalAlignment="Center" Width="64" Text="{Binding ReferenceDecibel, StringFormat='{}{0:F1} dB'}" />
             </StackPanel>
 
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" Spacing="8">
                 <Button Click="On_Calibrate" Content="校准" Padding="8,6" />
+                <Button Click="On_ShowDevices" Content="捕获设备列表" Padding="8,6" />
                 <TextBlock VerticalAlignment="Center" Text="当前放大倍数：" />
                 <TextBlock VerticalAlignment="Center" Text="{Binding Settings.Magnification, Mode=OneWay, StringFormat='{}{0:F3}×'}" />
             </StackPanel>
 
             <TextBlock FontSize="12" Classes="muted" Text="说明：滑块为 dB（0..150）。校准时会把该 dB 转换为 dBFS（dBFS = dB - 150），再用于放大倍数计算。" TextWrapping="Wrap"/>
+
+            <!-- 提醒区域 -->
+            <TextBlock FontSize="14" FontWeight="Bold" Text="提醒（Alert）" Margin="0,8,0,4"/>
+
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="8">
+                <TextBlock VerticalAlignment="Center" Width="88" Text="启用提醒" />
+                <ToggleSwitch IsChecked="{Binding Settings.IsAlertEnabled, Mode=TwoWay}" />
+            </StackPanel>
+
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="8">
+                <TextBlock VerticalAlignment="Center" Width="88" Text="阈值（dB）" />
+                <Slider Width="260" Minimum="0" Maximum="150" Value="{Binding Settings.AlertThreshold, Mode=TwoWay}" TickFrequency="1" />
+                <TextBlock VerticalAlignment="Center" Width="64" Text="{Binding Settings.AlertThreshold, StringFormat='{}{0:F0} dB'}" />
+            </StackPanel>
+
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="8">
+                <TextBlock VerticalAlignment="Center" Width="88" Text="提示文字" />
+                <TextBox Width="300" Text="{Binding Settings.AlertText, Mode=TwoWay}" />
+            </StackPanel>
+
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="8">
+                <TextBlock VerticalAlignment="Center" Width="88" Text="冷却（分钟）" />
+                <Slider Width="180" Minimum="1" Maximum="60" Value="{Binding Settings.AlertCooldownMinutes, Mode=TwoWay}" TickFrequency="1" IsSnapToTickEnabled="True" />
+                <TextBlock VerticalAlignment="Center" Text="{Binding Settings.AlertCooldownMinutes, StringFormat='{}{0} 分钟'}" />
+            </StackPanel>
+
+            <TextBlock FontSize="12" Classes="muted" Text="提示：超过阈值后组件会显示提示文字，并通过 ClassIsland 通知系统弹出提醒；冷却时间内不会重复提醒。" TextWrapping="Wrap"/>
         </StackPanel>
     </ScrollViewer>
 </ci:ComponentBase>
