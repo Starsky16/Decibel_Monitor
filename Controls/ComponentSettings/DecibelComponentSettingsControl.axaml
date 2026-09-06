@@ -35,6 +35,15 @@
                           Text="{Binding Settings.Magnification, Mode=OneWay, StringFormat='{}{0:F3}×'}" />
             </StackPanel>
 
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="8">
+                <TextBlock VerticalAlignment="Center" Width="88" Text="组件内提示" />
+                <ToggleSwitch IsChecked="{Binding Settings.ShowAlertTextOnComponent, Mode=TwoWay}" />
+            </StackPanel>
+
+            <TextBlock FontSize="12" Classes="muted"
+                       Text="说明：开启后，当分贝超过通知设置中的阈值时，会在本组件上显示红色提示文字（如“请保持安静”）；关闭后仍会发送系统通知，但不再在组件上显示提示文字。"
+                       TextWrapping="Wrap"/>
+
             <TextBlock FontSize="12" Classes="muted"
                        Text="说明：滑块为校准参考 dB（0..150），仅影响本组件的校准结果。校准时会把该 dB 转换为 dBFS（dBFS = dB - 150），再用于计算本组件的放大倍数。"
                        TextWrapping="Wrap"/>

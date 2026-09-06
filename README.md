@@ -58,6 +58,7 @@
 
 - `ReferenceDecibel` (double)：校准参考（显示刻度 dB），默认 70（对应 -80 dBFS）。
 - `Magnification` (double)：放大倍数，由校准或手动设置，默认 1.0。
+- `ShowAlertTextOnComponent` (bool)：是否在组件上显示“超过阈值”的提示文字，默认 true；关闭后仍会发送系统通知，但不在组件上显示提示文字。
 
 ### ② 通知提供方设置（`DecibelNotificationProviderSettings`，全局）
 

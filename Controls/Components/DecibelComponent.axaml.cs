@@ -106,8 +106,11 @@ public partial class DecibelComponent : ComponentBase<DecibelComponentSettings>,
                 var state = DecibelNotificationProvider.Instance?.Evaluate(mapped)
                             ?? new DecibelAlertState(false, "请保持安静");
 
+                // "组件内提示"开关只影响组件上是否显示提示文字，不影响 Evaluate 触发的系统通知
+                bool showAlertText = Settings?.ShowAlertTextOnComponent ?? true;
+
                 CurrentDecibelValue = $"{mapped:F1}";
-                IsAlertActive = state.IsActive;
+                IsAlertActive = showAlertText && state.IsActive;
                 AlertDisplayText = state.Text;
             });
         }

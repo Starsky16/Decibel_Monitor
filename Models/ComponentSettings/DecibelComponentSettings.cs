@@ -19,4 +19,10 @@ public partial class DecibelComponentSettings : ObservableObject
     /// 此前为设置控件中不持久化的字段，现并入组件设置以便持久化保存。
     /// </summary>
     [ObservableProperty] private double _referenceDecibel = 70.0;
+
+    /// <summary>
+    /// 是否在组件上显示"超过阈值"的提示文字（如“请保持安静”），默认 true。
+    /// 关闭后超阈值仍会发送系统通知，但不在组件上显示红色提示文字。
+    /// </summary>
+    [ObservableProperty] private bool _showAlertTextOnComponent = true;
 }
