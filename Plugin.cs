@@ -13,14 +13,22 @@ namespace Decibel_Monitor
     {
         public override void Initialize(HostBuilderContext context, IServiceCollection services)
         {
-            // 共享的麦克风峰值采样服务（单例，供组件与设置控件复用）
+            // 插件全局设置（保存于插件配置目录，供设置页与采样服务共享）
+            var globalSettingsService = new Services.DecibelMonitorSettingsService(PluginConfigFolder);
+            services.AddSingleton(globalSettingsService);
+
+            // 共享的麦克风峰值采样服务（单例，构造时读取全局采样偏好）
             services.AddSingleton<Services.AudioPeakMeter>();
 
             // 一次性注册组件与其设置控件（不要重复注册）
             services.AddComponent<Controls.Components.DecibelComponent, Controls.ComponentSettings.DecibelComponentSettingsControl>();
 
-            // 注册分贝提醒通知提供方（超过阈值时通过 ClassIsland 通知系统提醒）
-            services.AddNotificationProvider<Services.DecibelNotificationProvider>();
+            // 分贝提醒通知提供方（含"强调通知侧"设置控件）
+            services.AddNotificationProvider<Services.DecibelNotificationProvider,
+                Controls.NotificationProviders.DecibelNotificationProviderSettingsControl>();
+
+            // 插件设置页（与其他设置项同层级）
+            services.AddSettingsPage<Views.SettingsPages.DecibelMonitorSettingsPage>();
 
             // CI 集成测试标记：仅当显式开启环境变量时写入，
             // 供 GitHub Actions 在启动 ClassIsland 后确认插件已成功加载（Initialize 完整执行、注册无异常）。

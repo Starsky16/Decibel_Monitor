@@ -34,6 +34,12 @@
       <Compile Update="Controls\Components\DecibelComponent.axaml.cs">
         <DependentUpon>DecibelComponent.axaml</DependentUpon>
       </Compile>
+      <Compile Update="Controls\NotificationProviders\DecibelNotificationProviderSettingsControl.axaml.cs">
+        <DependentUpon>DecibelNotificationProviderSettingsControl.axaml</DependentUpon>
+      </Compile>
+      <Compile Update="Views\SettingsPages\DecibelMonitorSettingsPage.axaml.cs">
+        <DependentUpon>DecibelMonitorSettingsPage.axaml</DependentUpon>
+      </Compile>
     </ItemGroup>
 
     <ItemGroup>

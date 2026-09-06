@@ -1,0 +1,45 @@
+<ci:SettingsPageBase x:Class="Decibel_Monitor.Views.SettingsPages.DecibelMonitorSettingsPage"
+      xmlns="https://github.com/avaloniaui"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+      xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+      xmlns:ci="http://classisland.tech/schemas/xaml/core"
+      mc:Ignorable="d"
+      d:DesignHeight="600" d:DesignWidth="800">
+
+    <!-- 与其他设置项同层级的插件设置页：全局采样偏好 + 设备诊断 + 说明 -->
+    <ScrollViewer>
+        <StackPanel Classes="settings-container animated-intro" Margin="24" Spacing="8">
+
+            <TextBlock FontSize="14" FontWeight="Bold" Text="采样（高级）" Margin="0,0,0,4"/>
+
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="8">
+                <TextBlock VerticalAlignment="Center" Width="110" Text="回退采样时长" />
+                <Slider Width="220" Minimum="100" Maximum="2000" TickFrequency="100"
+                        Value="{Binding GlobalSettings.FallbackCaptureMs, Mode=TwoWay}"
+                        IsSnapToTickEnabled="True"/>
+                <TextBlock VerticalAlignment="Center" Width="90"
+                           Text="{Binding GlobalSettings.FallbackCaptureMs, StringFormat='{}{0} ms'}" />
+            </StackPanel>
+
+            <TextBlock FontSize="12" Classes="muted"
+                       Text="回退采样时长：当设备不提供实时计量时，插件会短暂录音以取得峰值。时长越长越容易捕获弱信号，但刷新开销越大。"
+                       TextWrapping="Wrap"/>
+
+            <TextBlock FontSize="14" FontWeight="Bold" Text="诊断" Margin="0,8,0,4"/>
+
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" Spacing="8">
+                <Button Click="On_RefreshDevices" Content="刷新设备" Padding="8,6" />
+                <Button Click="On_ShowDevices" Content="捕获设备列表" Padding="8,6" />
+            </StackPanel>
+            <TextBlock x:Name="TextDefaultDevice" Classes="muted" FontSize="12"
+                       Text="（点击“刷新设备”以读取默认捕获设备）"
+                       TextWrapping="Wrap"/>
+
+            <TextBlock FontSize="14" FontWeight="Bold" Text="关于" Margin="0,8,0,4"/>
+            <TextBlock FontSize="12" Classes="muted"
+                       Text="Decibel_Monitor 分贝监测插件。组件显示侧（校准）设置请右键组件 → 设置；提醒相关设置请在 通知 → 分贝提醒 中配置。插件仅在本机采样处理，不会上传任何音频数据。"
+                       TextWrapping="Wrap"/>
+        </StackPanel>
+    </ScrollViewer>
+</ci:SettingsPageBase>

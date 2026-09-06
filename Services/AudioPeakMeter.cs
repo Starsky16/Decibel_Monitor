@@ -21,14 +21,15 @@ public sealed class AudioPeakMeter : IDisposable
     /// <summary>慢速回退采样结果缓存时长（毫秒），避免高频 UI 刷新反复触发耗时采样。</summary>
     private const int FallbackResultCacheMs = 3000;
 
-    /// <summary>回退采样单次录音时长（毫秒）。</summary>
-    private const int FallbackCaptureMs = 400;
-
-    /// <summary>线性峰值超过该阈值视为"检测到有效信号"。</summary>
-    private const float SignalThreshold = 0.0001f;
-
+    private readonly object _deviceCacheLock = new();
     private readonly MMDeviceEnumerator _enumerator = new();
     private readonly SemaphoreSlim _samplingGate = new(1, 1);
+
+    /// <summary>回退采样单次录音时长（毫秒），来自插件全局设置，默认 400。</summary>
+    private readonly int _fallbackCaptureMs = 400;
+
+    /// <summary>线性峰值超过该阈值视为"检测到有效信号"，来自插件全局设置，默认 0.0001。</summary>
+    private readonly float _signalThreshold = 0.0001f;
 
     private MMDevice[]? _cachedCaptureDevices;
     private MMDevice? _cachedDefaultDevice;
@@ -45,6 +46,19 @@ public sealed class AudioPeakMeter : IDisposable
 
     /// <summary>当前服务是否已释放。</summary>
     public bool IsDisposed => _disposed;
+
+    /// <summary>
+    /// 初始化采样服务。
+    /// </summary>
+    /// <param name="settingsService">插件全局设置服务（可空；缺省时使用内置默认采样参数）。</param>
+    public AudioPeakMeter(DecibelMonitorSettingsService? settingsService = null)
+    {
+        if (settingsService is not null)
+        {
+            _fallbackCaptureMs = Math.Clamp(settingsService.Settings.FallbackCaptureMs, 100, 5000);
+            _signalThreshold = (float)Math.Clamp(settingsService.Settings.SignalThreshold, 0.000001, 1.0);
+        }
+    }
 
     /// <summary>
     /// 快速读取默认捕获设备的实时线性峰值（0..1）。
@@ -75,7 +89,7 @@ public sealed class AudioPeakMeter : IDisposable
         if (_disposed) return 0f;
 
         var fast = GetDefaultDevicePeakLinearFast();
-        if (fast > SignalThreshold)
+        if (fast > _signalThreshold)
         {
             // 快速路径读到有效信号：说明该设备支持实时计量，标记验证通过。
             // 此后静音（读 0）即为真实静音，无需再触发昂贵的回退录音采样。
@@ -107,7 +121,7 @@ public sealed class AudioPeakMeter : IDisposable
             }
 
             var device = GetDefaultCaptureDevice();
-            var result = await GetPeakLinearAsync(device, FallbackCaptureMs, cancellationToken).ConfigureAwait(false);
+            var result = await GetPeakLinearAsync(device, _fallbackCaptureMs, cancellationToken).ConfigureAwait(false);
 
             _cachedFallbackLinear = result;
             _fallbackCacheTimeUtc = DateTime.UtcNow;
@@ -126,13 +140,13 @@ public sealed class AudioPeakMeter : IDisposable
     {
         // 1) AudioMeterInformation（低成本实时计量）
         var meterValue = device?.AudioMeterInformation?.MasterPeakValue ?? 0f;
-        if (meterValue > SignalThreshold) return meterValue;
+        if (meterValue > _signalThreshold) return meterValue;
 
         // 2) WasapiCapture（指定设备）
         try
         {
             var v = await GetPeakByWasapiCaptureAsync(device, captureMs, cancellationToken).ConfigureAwait(false);
-            if (v > SignalThreshold) return v;
+            if (v > _signalThreshold) return v;
         }
         catch (OperationCanceledException) { throw; }
         catch { /* 忽略，继续回退 */ }
@@ -144,7 +158,7 @@ public sealed class AudioPeakMeter : IDisposable
             try
             {
                 var v = await GetPeakByWasapiCaptureAsync(null, captureMs, cancellationToken).ConfigureAwait(false);
-                if (v > SignalThreshold) return v;
+                if (v > _signalThreshold) return v;
             }
             catch (OperationCanceledException) { throw; }
             catch { /* 忽略 */ }
@@ -154,7 +168,7 @@ public sealed class AudioPeakMeter : IDisposable
         try
         {
             var v = await GetPeakByWaveInAsync(captureMs, cancellationToken).ConfigureAwait(false);
-            if (v > SignalThreshold) return v;
+            if (v > _signalThreshold) return v;
         }
         catch (OperationCanceledException) { throw; }
         catch { /* 忽略 */ }
@@ -187,37 +201,13 @@ public sealed class AudioPeakMeter : IDisposable
             try
             {
                 var wf = capture.WaveFormat;
-                float peak = 0f;
-                if (wf.Encoding == WaveFormatEncoding.IeeeFloat)
-                {
-                    for (int n = 0; n + 4 <= e.BytesRecorded; n += 4)
-                    {
-                        float sample = Math.Abs(BitConverter.ToSingle(e.Buffer, n));
-                        if (sample > peak) peak = sample;
-                    }
-                }
-                else if (wf.BitsPerSample == 16)
-                {
-                    for (int n = 0; n + 2 <= e.BytesRecorded; n += 2)
-                    {
-                        short s16 = BitConverter.ToInt16(e.Buffer, n);
-                        float sample = Math.Abs(s16 / 32768f);
-                        if (sample > peak) peak = sample;
-                    }
-                }
-                else if (wf.BitsPerSample == 32)
-                {
-                    for (int n = 0; n + 4 <= e.BytesRecorded; n += 4)
-                    {
-                        int i32 = BitConverter.ToInt32(e.Buffer, n);
-                        float sample = Math.Abs(i32 / (float)int.MaxValue);
-                        if (sample > peak) peak = sample;
-                    }
-                }
+                float peak = PeakSample.ComputePeak(
+                    e.Buffer, e.BytesRecorded,
+                    wf.Encoding == WaveFormatEncoding.IeeeFloat, wf.BitsPerSample);
 
                 if (peak > maxSample) maxSample = peak;
                 // 检测到有效信号即可提前完成采样，避免等满整个录音时长
-                if (maxSample > SignalThreshold) tcs.TrySetResult(maxSample);
+                if (maxSample > _signalThreshold) tcs.TrySetResult(maxSample);
             }
             catch { /* 忽略单个数据块解析错误 */ }
         };
@@ -254,13 +244,9 @@ public sealed class AudioPeakMeter : IDisposable
         {
             try
             {
-                for (int i = 0; i + 2 <= e.BytesRecorded; i += 2)
-                {
-                    short s16 = BitConverter.ToInt16(e.Buffer, i);
-                    float sample = Math.Abs(s16 / 32768f);
-                    if (sample > maxSample) maxSample = sample;
-                }
-                if (maxSample > SignalThreshold) tcs.TrySetResult(maxSample);
+                float peak = PeakSample.ComputePeak(e.Buffer, e.BytesRecorded, false, 16);
+                if (peak > maxSample) maxSample = peak;
+                if (maxSample > _signalThreshold) tcs.TrySetResult(maxSample);
             }
             catch { }
         };
@@ -289,11 +275,31 @@ public sealed class AudioPeakMeter : IDisposable
         try
         {
             EnsureDeviceCache();
-            return _cachedCaptureDevices?.Select(d => $"{d.FriendlyName} ({d.ID})").ToArray() ?? Array.Empty<string>();
+            lock (_deviceCacheLock)
+            {
+                return _cachedCaptureDevices?.Select(d => $"{d.FriendlyName} ({d.ID})").ToArray() ?? Array.Empty<string>();
+            }
         }
         catch
         {
             return Array.Empty<string>();
+        }
+    }
+
+    /// <summary>
+    /// 获取默认捕获设备的描述（用于诊断显示）。
+    /// </summary>
+    public string? GetDefaultCaptureDeviceDescription()
+    {
+        if (_disposed) return null;
+        try
+        {
+            var d = GetDefaultCaptureDevice();
+            return d is null ? null : $"{d.FriendlyName} ({d.ID})";
+        }
+        catch
+        {
+            return null;
         }
     }
 
@@ -305,9 +311,12 @@ public sealed class AudioPeakMeter : IDisposable
         try
         {
             EnsureDeviceCache();
-            if (_cachedDefaultDevice is null) return null;
-            if (_cachedCaptureDevices is null) return _cachedDefaultDevice;
-            return _cachedCaptureDevices.FirstOrDefault(c => c.ID == _cachedDefaultDevice.ID) ?? _cachedDefaultDevice;
+            lock (_deviceCacheLock)
+            {
+                if (_cachedDefaultDevice is null) return null;
+                if (_cachedCaptureDevices is null) return _cachedDefaultDevice;
+                return _cachedCaptureDevices.FirstOrDefault(c => c.ID == _cachedDefaultDevice.ID) ?? _cachedDefaultDevice;
+            }
         }
         catch
         {
@@ -320,12 +329,15 @@ public sealed class AudioPeakMeter : IDisposable
     /// </summary>
     private void EnsureDeviceCache()
     {
-        var now = DateTime.UtcNow;
-        if (_cachedCaptureDevices is null || (now - _deviceCacheTimeUtc).TotalMilliseconds >= DeviceRefreshIntervalMs)
+        lock (_deviceCacheLock)
         {
-            _cachedCaptureDevices = _enumerator.EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active).ToArray();
-            _cachedDefaultDevice = _enumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Console);
-            _deviceCacheTimeUtc = now;
+            var now = DateTime.UtcNow;
+            if (_cachedCaptureDevices is null || (now - _deviceCacheTimeUtc).TotalMilliseconds >= DeviceRefreshIntervalMs)
+            {
+                _cachedCaptureDevices = _enumerator.EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active).ToArray();
+                _cachedDefaultDevice = _enumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Console);
+                _deviceCacheTimeUtc = now;
+            }
         }
     }
 

@@ -21,6 +21,7 @@
   <!-- 仅编译纯逻辑源文件（不依赖 Windows / NAudio），便于在任意平台运行测试 -->
   <ItemGroup>
     <Compile Include="..\..\Services\DecibelCalculator.cs" Link="Services\DecibelCalculator.cs" />
+    <Compile Include="..\..\Services\PeakSample.cs" Link="Services\PeakSample.cs" />
   </ItemGroup>
 
 </Project>

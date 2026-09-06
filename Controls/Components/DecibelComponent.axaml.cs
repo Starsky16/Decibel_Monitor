@@ -1,5 +1,5 @@
 using System;
-using System.ComponentModel;
+using Avalonia;
 using Avalonia.Threading;
 using ClassIsland.Core.Abstractions.Controls;
 using ClassIsland.Core.Attributes;
@@ -15,37 +15,32 @@ namespace Decibel_Monitor.Controls.Components;
     "\uEB88",
     "在主界面上显示麦克风分贝值。"
 )]
-public partial class DecibelComponent : ComponentBase<DecibelComponentSettings>, INotifyPropertyChanged, IDisposable
+public partial class DecibelComponent : ComponentBase<DecibelComponentSettings>, IDisposable
 {
+    /// <summary>当前显示的分贝值文本。</summary>
+    public static readonly StyledProperty<string> CurrentDecibelValueProperty =
+        AvaloniaProperty.Register<DecibelComponent, string>(nameof(CurrentDecibelValue), "N/A");
+
+    /// <summary>当前是否处于"超过阈值"提醒状态（显示提示文字）。</summary>
+    public static readonly StyledProperty<bool> IsAlertActiveProperty =
+        AvaloniaProperty.Register<DecibelComponent, bool>(nameof(IsAlertActive));
+
+    /// <summary>超过阈值时显示的提示文字。</summary>
+    public static readonly StyledProperty<string> AlertDisplayTextProperty =
+        AvaloniaProperty.Register<DecibelComponent, string>(nameof(AlertDisplayText), "请保持安静");
+
     private readonly DispatcherTimer _updateTimer;
     private readonly AudioPeakMeter? _audioPeakMeter;
-    private readonly DecibelNotificationProvider? _notificationProvider;
     private volatile bool _disposed;
-    private string _currentDecibelValue = "N/A";
-    private bool _isAlertActive;
-    private DateTime _nextAlertTimeUtc = DateTime.MinValue;
     private volatile bool _isUpdating;
-    private string? _lastAlertText;
 
-    // 子类独立事件：Avalonia 绑定通过 INotifyPropertyChanged 接口订阅，这里显式实现接口事件并转发到本事件，
-    // 使 CurrentDecibelValue / IsAlertActive 等 CLR 属性的变化通知能到达绑定系统。
-    public new event PropertyChangedEventHandler? PropertyChanged;
-
-    event PropertyChangedEventHandler? INotifyPropertyChanged.PropertyChanged
-    {
-        add => PropertyChanged += value;
-        remove => PropertyChanged -= value;
-    }
-
+    /// <summary>
+    /// 当前显示的分贝值文本（Avalonia 属性，绑定自动响应变化）。
+    /// </summary>
     public string CurrentDecibelValue
     {
-        get => _currentDecibelValue;
-        private set
-        {
-            if (_currentDecibelValue == value) return;
-            _currentDecibelValue = value;
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CurrentDecibelValue)));
-        }
+        get => GetValue(CurrentDecibelValueProperty);
+        private set => SetValue(CurrentDecibelValueProperty, value);
     }
 
     /// <summary>
@@ -53,20 +48,18 @@ public partial class DecibelComponent : ComponentBase<DecibelComponentSettings>,
     /// </summary>
     public bool IsAlertActive
     {
-        get => _isAlertActive;
-        private set
-        {
-            if (_isAlertActive == value) return;
-            _isAlertActive = value;
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsAlertActive)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(AlertDisplayText)));
-        }
+        get => GetValue(IsAlertActiveProperty);
+        private set => SetValue(IsAlertActiveProperty, value);
     }
 
     /// <summary>
-    /// 提醒提示文字（取设置中的自定义文字）。
+    /// 超过阈值时显示的提示文字（取通知设置中的自定义文字）。
     /// </summary>
-    public string AlertDisplayText => Settings?.AlertText ?? "请保持安静";
+    public string AlertDisplayText
+    {
+        get => GetValue(AlertDisplayTextProperty);
+        private set => SetValue(AlertDisplayTextProperty, value);
+    }
 
     public DecibelComponent()
     {
@@ -74,10 +67,6 @@ public partial class DecibelComponent : ComponentBase<DecibelComponentSettings>,
 
         // 从宿主 DI 容器获取共享的峰值采样服务（单例，含并发保护与缓存）
         _audioPeakMeter = IAppHost.Host?.Services.GetService(typeof(AudioPeakMeter)) as AudioPeakMeter;
-
-        // 提醒通知提供方由 AddNotificationProvider 注册为 IHostedService（仅 IHostedService -> 类型），
-        // 无法通过 DI 直接解析；其构造函数会写入静态 Instance，故直接使用该实例。
-        _notificationProvider = DecibelNotificationProvider.Instance;
 
         _updateTimer = new DispatcherTimer
         {
@@ -107,41 +96,19 @@ public partial class DecibelComponent : ComponentBase<DecibelComponentSettings>,
             double magnification = Settings?.Magnification ?? 1.0;
             double mapped = DecibelCalculator.LinearToDisplayDb(linear, magnification);
 
-            bool alertEnabled = Settings?.IsAlertEnabled ?? false;
-            bool overThreshold = mapped > (Settings?.AlertThreshold ?? 120.0);
-            bool shouldNotify = false;
-
-            if (alertEnabled && overThreshold)
-            {
-                // 冷却期内不重复触发，避免频繁弹窗
-                if (DateTime.UtcNow >= _nextAlertTimeUtc)
-                {
-                    _nextAlertTimeUtc = DateTime.UtcNow.AddMinutes(Math.Max(1, Settings?.AlertCooldownMinutes ?? 10));
-                    shouldNotify = true;
-                }
-            }
-
-            if (shouldNotify)
-            {
-                _notificationProvider?.NotifyOverThreshold(Settings?.AlertText ?? "请保持安静");
-            }
-
-            // 绑定属性变更必须回到 UI 线程触发（Avalonia 绑定依赖 UI 线程上的 PropertyChanged）。
-            // 组件已释放时丢弃更新，避免在 Dispose 之后仍操作控件。
+            // 绑定属性变更与提醒评估（含通知触发）都放回 UI 线程执行。
+            // 提醒提供方实例采用"动态读取"而非构造时缓存：插件加载早期组件可能先于
+            // 通知提供方（IHostedService）创建，缓存为 null 将导致提醒永久失效。
             Dispatcher.UIThread.Post(() =>
             {
                 if (_disposed) return;
 
-                IsAlertActive = alertEnabled && overThreshold;
-                CurrentDecibelValue = $"{mapped:F1}";
+                var state = DecibelNotificationProvider.Instance?.Evaluate(mapped)
+                            ?? new DecibelAlertState(false, "请保持安静");
 
-                // 提示文字变化时同步通知，保证 AlertDisplayText 绑定始终反映最新设置
-                string alertText = Settings?.AlertText ?? "请保持安静";
-                if (!string.Equals(_lastAlertText, alertText, StringComparison.Ordinal))
-                {
-                    _lastAlertText = alertText;
-                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(AlertDisplayText)));
-                }
+                CurrentDecibelValue = $"{mapped:F1}";
+                IsAlertActive = state.IsActive;
+                AlertDisplayText = state.Text;
             });
         }
         catch (Exception)
@@ -167,3 +134,4 @@ public partial class DecibelComponent : ComponentBase<DecibelComponentSettings>,
         _updateTimer.Stop();
     }
 }
+
