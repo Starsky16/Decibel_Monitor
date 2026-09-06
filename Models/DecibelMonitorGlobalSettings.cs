@@ -18,10 +18,9 @@ public partial class DecibelMonitorGlobalSettings : ObservableObject
     [ObservableProperty] private double _signalThreshold = 0.0001;
 
     /// <summary>
-    /// 是否允许"回退录音采样"：为 false（默认）时实时监测仅使用系统实时计量
-    /// （AudioMeterInformation，不打开麦克风录音通道，避免触发 Windows 麦克风占用提示）。
-    /// 开启后会在实时计量读不到有效信号时周期性短暂录音以获取峰值（会占用麦克风并可能导致占用图标闪烁），
-    /// 仅供系统不提供实时计量的设备使用。
+    /// 是否启用"常驻静默捕获流"，默认 true。
+    /// 开启后保持一条低开销的麦克风捕获流以持续获取峰值（Windows 会显示"麦克风正在使用"，但图标常亮、不会闪烁）；
+    /// 关闭后仅使用系统实时计量（多数设备在无活跃录音会话时该值为 0，组件可能长期显示 0）。
     /// </summary>
-    [ObservableProperty] private bool _enableFallbackSampling = false;
+    [ObservableProperty] private bool _enableContinuousMonitoring = true;
 }

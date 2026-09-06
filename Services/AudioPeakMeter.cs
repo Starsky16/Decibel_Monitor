@@ -9,44 +9,52 @@ namespace Decibel_Monitor.Services;
 
 /// <summary>
 /// 麦克风峰值采样服务。
-/// 统一管理多重回退采样（AudioMeterInformation → WasapiCapture(指定设备) → WasapiCapture(默认) → WaveInEvent），
-/// 通过信号量保证任意时刻只有一个采样会话，避免多个调用方同时抢占音频设备。
-/// 设备枚举结果与慢速回退采样结果均带缓存，避免高频 UI 刷新产生不必要的开销。
+/// 通过一条"常驻静默捕获流"（WASAPI 共享模式，仅计算峰值、不保存音频）持续读取默认麦克风峰值，
+/// 供组件高频刷新直接读取——数值稳定、无周期性打开/关闭录音导致的占用图标闪烁。
+/// 常驻流不可用时回退到系统实时计量（AudioMeterInformation）；
+/// 显式操作（校准等）可调用 <see cref="CaptureSamplePeakAsync"/> 临时采样一次。
+/// 设备枚举结果带缓存，采样会话（临时采样）受信号量保护。
 /// </summary>
 public sealed class AudioPeakMeter : IDisposable
 {
     /// <summary>设备列表缓存刷新间隔（毫秒）。</summary>
     private const int DeviceRefreshIntervalMs = 5000;
 
-    /// <summary>慢速回退采样结果缓存时长（毫秒），避免高频 UI 刷新反复触发耗时采样。</summary>
-    private const int FallbackResultCacheMs = 3000;
+    /// <summary>常驻捕获流启动失败后的重试退避间隔（毫秒）。</summary>
+    private const int CaptureRestartBackoffMs = 5000;
+
+    /// <summary>常驻捕获流的峰值窗口（毫秒）：超过该窗口后重新开始累计最大值。</summary>
+    private static readonly TimeSpan ContinuousPeakWindow = TimeSpan.FromMilliseconds(400);
 
     private readonly object _deviceCacheLock = new();
+    private readonly object _captureLock = new();
     private readonly MMDeviceEnumerator _enumerator = new();
     private readonly SemaphoreSlim _samplingGate = new(1, 1);
 
-    /// <summary>回退采样单次录音时长（毫秒），来自插件全局设置，默认 400。</summary>
+    /// <summary>临时（显式）采样单次录音时长（毫秒），来自插件全局设置，默认 400。</summary>
     private readonly int _fallbackCaptureMs = 400;
 
     /// <summary>线性峰值超过该阈值视为"检测到有效信号"，来自插件全局设置，默认 0.0001。</summary>
     private readonly float _signalThreshold = 0.0001f;
 
     /// <summary>
-    /// 是否允许回退录音采样。默认 false：实时监测只用系统实时计量（不打开录音通道），
-    /// 避免周期性占用麦克风导致的 Windows 占用图标闪烁。
+    /// 是否启用"常驻静默捕获流"。默认 true：保持一条低开销捕获流以持续获取峰值
+    /// （Windows 会显示麦克风正在使用且图标常亮，但不会闪烁）。
+    /// 关闭后仅使用系统实时计量（多数设备在无活跃录音会话时该值为 0）。
     /// </summary>
-    private readonly bool _enableFallbackSampling;
+    private readonly bool _enableContinuousMonitoring;
 
     private MMDevice[]? _cachedCaptureDevices;
     private MMDevice? _cachedDefaultDevice;
     private DateTime _deviceCacheTimeUtc = DateTime.MinValue;
 
-    private float _cachedFallbackLinear;
-    private DateTime _fallbackCacheTimeUtc = DateTime.MinValue;
-
-    /// <summary>实时计量（AudioMeterInformation）已验证可用及对应的默认设备 ID。</summary>
-    private volatile bool _fastPathVerified;
-    private volatile string? _fastPathVerifiedDeviceId;
+    // ---- 常驻捕获流 ----
+    private WasapiCapture? _continuousCapture;
+    private string? _continuousCaptureDeviceId;
+    private DateTime _continuousWindowStartUtc;
+    private DateTime _nextCaptureStartAttemptUtc = DateTime.MinValue;
+    private volatile bool _captureRunning;
+    private volatile float _continuousPeak;
 
     private volatile bool _disposed;
 
@@ -54,9 +62,14 @@ public sealed class AudioPeakMeter : IDisposable
     public bool IsDisposed => _disposed;
 
     /// <summary>
-    /// 当前默认的录音采样时长（毫秒，来自插件全局设置；未注入时 400）。
+    /// 当前默认的临时采样时长（毫秒，来自插件全局设置；未注入时 400）。
     /// </summary>
     public int DefaultCaptureMs => _fallbackCaptureMs;
+
+    /// <summary>
+    /// 是否启用"常驻静默捕获流"。
+    /// </summary>
+    public bool EnableContinuousMonitoring => _enableContinuousMonitoring;
 
     /// <summary>
     /// 初始化采样服务。
@@ -68,7 +81,7 @@ public sealed class AudioPeakMeter : IDisposable
         {
             _fallbackCaptureMs = Math.Clamp(settingsService.Settings.FallbackCaptureMs, 100, 5000);
             _signalThreshold = (float)Math.Clamp(settingsService.Settings.SignalThreshold, 0.000001, 1.0);
-            _enableFallbackSampling = settingsService.Settings.EnableFallbackSampling;
+            _enableContinuousMonitoring = settingsService.Settings.EnableContinuousMonitoring;
         }
     }
 
@@ -93,43 +106,165 @@ public sealed class AudioPeakMeter : IDisposable
 
     /// <summary>
     /// 获取默认捕获设备的线性峰值（0..1），供组件周期刷新使用。
-    /// 默认仅使用系统实时计量（AudioMeterInformation），不会打开麦克风录音通道，
-    /// 从而避免 Windows 麦克风占用提示与"读取失败/正常值"交替闪烁。
-    /// 仅当全局设置中显式开启"回退录音采样"时，才在实时计量读不到有效信号时
-    /// 周期性短时录音（受信号量保护并缓存结果）。
+    /// 启用"常驻静默捕获流"时，返回常驻流在当前峰值窗口内的最大值（稳定、无周期性开/关录音）；
+    /// 同时优先返回实时计量（AudioMeterInformation）读到的更大瞬时值以提高响应灵敏度。
+    /// 未启用常驻流时仅使用系统实时计量（多数设备在无活跃录音会话时该值为 0）。
     /// </summary>
-    public async Task<float> GetDefaultDevicePeakLinearAsync(CancellationToken cancellationToken = default)
+    public Task<float> GetDefaultDevicePeakLinearAsync(CancellationToken cancellationToken = default)
     {
-        if (_disposed) return 0f;
+        if (_disposed) return Task.FromResult(0f);
 
         var fast = GetDefaultDevicePeakLinearFast();
         if (fast > _signalThreshold)
         {
-            // 实时计量读到有效信号：说明该设备支持实时计量，标记验证通过。
-            // 此后静音（读 0）即为真实静音，无需再触发回退录音采样。
-            _fastPathVerified = true;
-            _fastPathVerifiedDeviceId = _cachedDefaultDevice?.ID;
-            return fast;
+            return Task.FromResult(fast);
         }
 
-        // 默认关闭回退录音：实时计量读 0 时视为静音，直接返回，绝不周期性打开录音通道。
-        if (!_enableFallbackSampling)
+        if (_enableContinuousMonitoring)
         {
-            return 0f;
+            EnsureContinuousCapture();
+            return Task.FromResult(_continuousPeak);
         }
 
-        // 实时计量已验证可用且默认设备未变化：0 就是真实静音，直接返回，避免反复打开音频设备。
-        if (_fastPathVerified && _fastPathVerifiedDeviceId == _cachedDefaultDevice?.ID)
+        return Task.FromResult(0f);
+    }
+
+    /// <summary>
+    /// 确保"常驻静默捕获流"已启动。捕获流仅计算峰值、不保存音频；
+    /// 若默认设备变化或捕获意外停止则自动重启（带退避）。
+    /// </summary>
+    private void EnsureContinuousCapture()
+    {
+        if (_disposed || !_enableContinuousMonitoring) return;
+
+        // 捕获运行中：仅检查默认设备是否变化，变化则重启
+        if (_captureRunning)
         {
-            return 0f;
+            if (_continuousCaptureDeviceId != GetDefaultCaptureDevice()?.ID)
+            {
+                RestartContinuousCapture();
+            }
+            return;
         }
 
-        if (IsFallbackCacheFresh())
+        if (DateTime.UtcNow < _nextCaptureStartAttemptUtc) return; // 失败退避中
+
+        lock (_captureLock)
         {
-            return _cachedFallbackLinear;
-        }
+            if (_disposed || _captureRunning) return;
+            if (DateTime.UtcNow < _nextCaptureStartAttemptUtc) return;
 
-        return await CaptureSamplePeakAsync(_fallbackCaptureMs, cancellationToken).ConfigureAwait(false);
+            try
+            {
+                var device = GetDefaultCaptureDevice();
+                if (device is null)
+                {
+                    _nextCaptureStartAttemptUtc = DateTime.UtcNow.AddMilliseconds(CaptureRestartBackoffMs);
+                    return;
+                }
+
+                StopContinuousCaptureLocked(); // 清理可能残留的对象
+
+                var capture = new WasapiCapture(device);
+                capture.DataAvailable += OnContinuousData;
+                capture.RecordingStopped += OnContinuousStopped;
+                capture.StartRecording();
+
+                _continuousCapture = capture;
+                _continuousCaptureDeviceId = device.ID;
+                _continuousWindowStartUtc = DateTime.MinValue;
+                _continuousPeak = 0f;
+                _captureRunning = true;
+            }
+            catch
+            {
+                // 启动失败：清理并退避，避免高频重试
+                StopContinuousCaptureLocked();
+                _nextCaptureStartAttemptUtc = DateTime.UtcNow.AddMilliseconds(CaptureRestartBackoffMs);
+            }
+        }
+    }
+
+    /// <summary>
+    /// 重启常驻捕获流（默认设备变化等场景）。调用方应确保在 <see cref="_captureLock"/> 外或已持有该锁。
+    /// </summary>
+    private void RestartContinuousCapture()
+    {
+        lock (_captureLock)
+        {
+            StopContinuousCaptureLocked();
+            _nextCaptureStartAttemptUtc = DateTime.MinValue;
+        }
+        // 让 EnsureContinuousCapture 的加锁路径重新启动
+        EnsureContinuousCapture();
+    }
+
+    /// <summary>
+    /// 停止并释放当前常驻捕获流。须在持有 <see cref="_captureLock"/> 时调用。
+    /// </summary>
+    private void StopContinuousCaptureLocked()
+    {
+        var capture = _continuousCapture;
+        _continuousCapture = null;
+        _continuousCaptureDeviceId = null;
+        _captureRunning = false;
+        _continuousPeak = 0f;
+
+        if (capture is null) return;
+        try
+        {
+            capture.DataAvailable -= OnContinuousData;
+            capture.RecordingStopped -= OnContinuousStopped;
+            capture.StopRecording();
+        }
+        catch { /* 忽略停止时的异常 */ }
+        capture.Dispose();
+    }
+
+    /// <summary>
+    /// 常驻捕获流数据回调：在每个数据块中取峰值，并在 <see cref="ContinuousPeakWindow"/>
+    /// 窗口内保留最大值（供读取线程经 <see cref="_continuousPeak"/> 获取）。
+    /// </summary>
+    private void OnContinuousData(object? sender, WaveInEventArgs e)
+    {
+        try
+        {
+            if (sender is not WasapiCapture capture) return;
+
+            var wf = capture.WaveFormat;
+            float blockPeak = PeakSample.ComputePeak(
+                e.Buffer, e.BytesRecorded,
+                wf.Encoding == WaveFormatEncoding.IeeeFloat, wf.BitsPerSample);
+
+            var now = DateTime.UtcNow;
+            if (_continuousWindowStartUtc == DateTime.MinValue ||
+                now - _continuousWindowStartUtc > ContinuousPeakWindow)
+            {
+                _continuousWindowStartUtc = now;
+                _continuousPeak = blockPeak;
+            }
+            else if (blockPeak > _continuousPeak)
+            {
+                _continuousPeak = blockPeak;
+            }
+        }
+        catch { /* 忽略单个数据块解析错误 */ }
+    }
+
+    /// <summary>
+    /// 常驻捕获流停止回调（设备被拔出、被独占或异常等）。
+    /// </summary>
+    private void OnContinuousStopped(object? sender, StoppedEventArgs e)
+    {
+        // 仅处理当前流的事件，忽略重启过程中旧流延迟到达的回调
+        if (!ReferenceEquals(sender, _continuousCapture)) return;
+
+        _captureRunning = false;
+        _continuousPeak = 0f;
+        if (e.Exception is not null)
+        {
+            _nextCaptureStartAttemptUtc = DateTime.UtcNow.AddMilliseconds(CaptureRestartBackoffMs);
+        }
     }
 
     /// <summary>
@@ -148,11 +283,7 @@ public sealed class AudioPeakMeter : IDisposable
             cancellationToken.ThrowIfCancellationRequested();
 
             var device = GetDefaultCaptureDevice();
-            var result = await GetPeakLinearAsync(device, Math.Clamp(captureMs, 100, 5000), cancellationToken).ConfigureAwait(false);
-
-            _cachedFallbackLinear = result;
-            _fallbackCacheTimeUtc = DateTime.UtcNow;
-            return result;
+            return await GetPeakLinearAsync(device, Math.Clamp(captureMs, 100, 5000), cancellationToken).ConfigureAwait(false);
         }
         finally
         {
@@ -368,15 +499,16 @@ public sealed class AudioPeakMeter : IDisposable
         }
     }
 
-    private bool IsFallbackCacheFresh()
-    {
-        return (DateTime.UtcNow - _fallbackCacheTimeUtc).TotalMilliseconds < FallbackResultCacheMs;
-    }
-
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
+
+        lock (_captureLock)
+        {
+            StopContinuousCaptureLocked();
+        }
+
         _enumerator.Dispose();
         _samplingGate.Dispose();
     }
