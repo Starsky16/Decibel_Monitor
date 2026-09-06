@@ -31,6 +31,12 @@ public sealed class AudioPeakMeter : IDisposable
     /// <summary>线性峰值超过该阈值视为"检测到有效信号"，来自插件全局设置，默认 0.0001。</summary>
     private readonly float _signalThreshold = 0.0001f;
 
+    /// <summary>
+    /// 是否允许回退录音采样。默认 false：实时监测只用系统实时计量（不打开录音通道），
+    /// 避免周期性占用麦克风导致的 Windows 占用图标闪烁。
+    /// </summary>
+    private readonly bool _enableFallbackSampling;
+
     private MMDevice[]? _cachedCaptureDevices;
     private MMDevice? _cachedDefaultDevice;
     private DateTime _deviceCacheTimeUtc = DateTime.MinValue;
@@ -48,6 +54,11 @@ public sealed class AudioPeakMeter : IDisposable
     public bool IsDisposed => _disposed;
 
     /// <summary>
+    /// 当前默认的录音采样时长（毫秒，来自插件全局设置；未注入时 400）。
+    /// </summary>
+    public int DefaultCaptureMs => _fallbackCaptureMs;
+
+    /// <summary>
     /// 初始化采样服务。
     /// </summary>
     /// <param name="settingsService">插件全局设置服务（可空；缺省时使用内置默认采样参数）。</param>
@@ -57,6 +68,7 @@ public sealed class AudioPeakMeter : IDisposable
         {
             _fallbackCaptureMs = Math.Clamp(settingsService.Settings.FallbackCaptureMs, 100, 5000);
             _signalThreshold = (float)Math.Clamp(settingsService.Settings.SignalThreshold, 0.000001, 1.0);
+            _enableFallbackSampling = settingsService.Settings.EnableFallbackSampling;
         }
     }
 
@@ -80,9 +92,11 @@ public sealed class AudioPeakMeter : IDisposable
     }
 
     /// <summary>
-    /// 获取默认捕获设备的线性峰值（0..1）。
-    /// 优先使用实时计量；不可用时进行短时录音回退采样（结果缓存一段时间，避免反复触发耗时采样）。
-    /// 回退采样受信号量保护，同一时间只会有一个采样会话。
+    /// 获取默认捕获设备的线性峰值（0..1），供组件周期刷新使用。
+    /// 默认仅使用系统实时计量（AudioMeterInformation），不会打开麦克风录音通道，
+    /// 从而避免 Windows 麦克风占用提示与"读取失败/正常值"交替闪烁。
+    /// 仅当全局设置中显式开启"回退录音采样"时，才在实时计量读不到有效信号时
+    /// 周期性短时录音（受信号量保护并缓存结果）。
     /// </summary>
     public async Task<float> GetDefaultDevicePeakLinearAsync(CancellationToken cancellationToken = default)
     {
@@ -91,11 +105,17 @@ public sealed class AudioPeakMeter : IDisposable
         var fast = GetDefaultDevicePeakLinearFast();
         if (fast > _signalThreshold)
         {
-            // 快速路径读到有效信号：说明该设备支持实时计量，标记验证通过。
-            // 此后静音（读 0）即为真实静音，无需再触发昂贵的回退录音采样。
+            // 实时计量读到有效信号：说明该设备支持实时计量，标记验证通过。
+            // 此后静音（读 0）即为真实静音，无需再触发回退录音采样。
             _fastPathVerified = true;
             _fastPathVerifiedDeviceId = _cachedDefaultDevice?.ID;
             return fast;
+        }
+
+        // 默认关闭回退录音：实时计量读 0 时视为静音，直接返回，绝不周期性打开录音通道。
+        if (!_enableFallbackSampling)
+        {
+            return 0f;
         }
 
         // 实时计量已验证可用且默认设备未变化：0 就是真实静音，直接返回，避免反复打开音频设备。
@@ -109,19 +129,26 @@ public sealed class AudioPeakMeter : IDisposable
             return _cachedFallbackLinear;
         }
 
+        return await CaptureSamplePeakAsync(_fallbackCaptureMs, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 显式采样一次默认捕获设备的线性峰值（0..1）——用户主动触发（如校准、诊断）时使用。
+    /// 会按 AudioMeterInformation → WasapiCapture → WaveInEvent 顺序尝试，
+    /// 期间会短暂打开录音通道（受信号量保护，同一时间仅一个采样会话）。
+    /// </summary>
+    /// <param name="captureMs">录音采样时长（毫秒），限制在 100..5000 之间。</param>
+    public async Task<float> CaptureSamplePeakAsync(int captureMs, CancellationToken cancellationToken = default)
+    {
+        if (_disposed) return 0f;
+
         await _samplingGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            // 双重检查：等待锁期间可能有其他调用已完成采样并更新缓存
-            if (IsFallbackCacheFresh())
-            {
-                return _cachedFallbackLinear;
-            }
-
             var device = GetDefaultCaptureDevice();
-            var result = await GetPeakLinearAsync(device, _fallbackCaptureMs, cancellationToken).ConfigureAwait(false);
+            var result = await GetPeakLinearAsync(device, Math.Clamp(captureMs, 100, 5000), cancellationToken).ConfigureAwait(false);
 
             _cachedFallbackLinear = result;
             _fallbackCacheTimeUtc = DateTime.UtcNow;

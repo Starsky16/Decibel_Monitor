@@ -13,6 +13,19 @@
 
             <TextBlock FontSize="14" FontWeight="Bold" Text="采样（高级）" Margin="0,0,0,4"/>
 
+            <TextBlock FontSize="12" Classes="muted"
+                       Text="默认情况下，实时监测只使用 Windows 系统实时计量（AudioMeterInformation），不会打开麦克风录音通道，因此不会触发“麦克风正在使用”提示。"
+                       TextWrapping="Wrap"/>
+
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="8">
+                <TextBlock VerticalAlignment="Center" Width="110" Text="回退录音采样" />
+                <ToggleSwitch IsChecked="{Binding GlobalSettings.EnableFallbackSampling, Mode=TwoWay}" />
+            </StackPanel>
+
+            <TextBlock FontSize="12" Classes="muted"
+                       Text="警告：开启后，当系统实时计量读不到有效信号时，插件会周期性短暂录音以获取峰值（例如每数秒一次）。这会占用麦克风通道并可能让 Windows 的麦克风占用图标闪烁。仅供系统不提供实时计量的设备使用。"
+                       TextWrapping="Wrap"/>
+
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="8">
                 <TextBlock VerticalAlignment="Center" Width="110" Text="回退采样时长" />
                 <Slider Width="220" Minimum="100" Maximum="2000" TickFrequency="100"
@@ -23,7 +36,7 @@
             </StackPanel>
 
             <TextBlock FontSize="12" Classes="muted"
-                       Text="回退采样时长：当设备不提供实时计量时，插件会短暂录音以取得峰值。时长越长越容易捕获弱信号，但刷新开销越大。"
+                       Text="回退采样时长：仅在开启“回退录音采样”后生效；时长越长越容易捕获弱信号，但占用时间越长。校准、诊断等显式操作会临时按该时长录音一次。"
                        TextWrapping="Wrap"/>
 
             <TextBlock FontSize="14" FontWeight="Bold" Text="诊断" Margin="0,8,0,4"/>

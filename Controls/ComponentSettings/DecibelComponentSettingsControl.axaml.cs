@@ -39,7 +39,9 @@ public partial class DecibelComponentSettingsControl : ComponentBase<DecibelComp
                 return;
             }
 
-            float measuredLinear = await _audioPeakMeter.GetDefaultDevicePeakLinearAsync().ConfigureAwait(false);
+            // 校准是用户的显式操作：主动短暂录音采样一次以获取真实峰值（平时实时监测不会占用麦克风通道）。
+            // 内部仍会优先尝试实时计量，不可用时才短暂打开录音通道。
+            float measuredLinear = await _audioPeakMeter.CaptureSamplePeakAsync(_audioPeakMeter.DefaultCaptureMs).ConfigureAwait(false);
 
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
