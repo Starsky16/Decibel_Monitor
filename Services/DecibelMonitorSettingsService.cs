@@ -55,6 +55,9 @@ public sealed class DecibelMonitorSettingsService : IDisposable
             {
                 Settings.FallbackCaptureMs = loaded.FallbackCaptureMs;
                 Settings.SignalThreshold = loaded.SignalThreshold;
+                Settings.EnableContinuousMonitoring = loaded.EnableContinuousMonitoring;
+                Settings.ReferenceDecibel = loaded.ReferenceDecibel;
+                Settings.Magnification = loaded.Magnification;
             }
         }
         catch

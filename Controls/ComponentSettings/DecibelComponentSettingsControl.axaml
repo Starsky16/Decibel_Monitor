@@ -10,30 +10,12 @@
     xmlns:componentSettingsModel="clr-namespace:Decibel_Monitor.Models.ComponentSettings"
     mc:Ignorable="d">
 
-    <!-- 本面板仅包含"小组件显示侧"的校准相关设置。
-         提醒相关设置请到 设置 → 通知 → 分贝提醒 中配置；
-         设备诊断请到 设置 → Decibel_Monitor 插件设置页。 -->
+    <!-- 本面板（"小组件显示侧"）仅包含该组件的显示偏好。
+         测量/校准（参考 dB、放大倍数）为全局设置，请到 设置 → Decibel_Monitor 页 校准；
+         提醒相关设置请到 设置 → 通知 → 分贝提醒。 -->
     <ScrollViewer
         DataContext="{Binding RelativeSource={RelativeSource Mode=FindAncestor, AncestorType={x:Type local:DecibelComponentSettingsControl}}}">
         <StackPanel Classes="settings-container animated-intro" Margin="12" Spacing="8">
-            <!-- 校准区域 -->
-            <TextBlock FontSize="14" FontWeight="Bold" Text="校准（Calibration）" Margin="0,0,0,4"/>
-
-            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="8">
-                <TextBlock VerticalAlignment="Center" Width="88" Text="参考（dB）" />
-                <!-- 参考 dB（0~150），内部换算为 dBFS 后用于放大倍数计算 -->
-                <Slider Width="260" Minimum="0" Maximum="150"
-                        Value="{Binding Settings.ReferenceDecibel, Mode=TwoWay}" TickFrequency="1" />
-                <TextBlock VerticalAlignment="Center" Width="64"
-                           Text="{Binding Settings.ReferenceDecibel, StringFormat='{}{0:F1} dB'}" />
-            </StackPanel>
-
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" Spacing="8">
-                <Button Click="On_Calibrate" Content="校准" Padding="8,6" />
-                <TextBlock VerticalAlignment="Center" Text="当前放大倍数：" />
-                <TextBlock VerticalAlignment="Center"
-                          Text="{Binding Settings.Magnification, Mode=OneWay, StringFormat='{}{0:F3}×'}" />
-            </StackPanel>
 
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="8">
                 <TextBlock VerticalAlignment="Center" Width="88" Text="组件内提示" />
@@ -41,17 +23,14 @@
             </StackPanel>
 
             <TextBlock FontSize="12" Classes="muted"
-                       Text="说明：开启后，当分贝超过通知设置中的阈值时，会在本组件上显示红色提示文字（如“请保持安静”）；关闭后仍会发送系统通知，但不再在组件上显示提示文字。"
+                       Text="开启后，当分贝超过通知设置中的阈值时，会在本组件上显示红色提示文字（如“请保持安静”）；关闭后仍会发送系统通知，但不再在组件上显示提示文字。"
                        TextWrapping="Wrap"/>
 
             <TextBlock FontSize="12" Classes="muted"
-                       Text="说明：滑块为校准参考 dB（0..150），仅影响本组件的校准结果。校准时会把该 dB 转换为 dBFS（dBFS = dB - 150），再用于计算本组件的放大倍数。"
-                       TextWrapping="Wrap"/>
-
-            <TextBlock FontSize="12" Classes="muted"
-                       Text="提示：超过阈值的提醒与冷却时间可在 ClassIsland 设置中的“分贝提醒”通知处配置。"
+                       Text="分贝数值由全局校准决定（同一麦克风所有组件显示一致）。校准与放大倍数请到 设置 → Decibel_Monitor 页 操作。"
                        TextWrapping="Wrap"/>
         </StackPanel>
     </ScrollViewer>
 </ci:ComponentBase>
+
 

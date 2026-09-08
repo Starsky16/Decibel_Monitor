@@ -11,7 +11,27 @@
     <ScrollViewer>
         <StackPanel Classes="settings-container animated-intro" Margin="24" Spacing="8">
 
-            <TextBlock FontSize="14" FontWeight="Bold" Text="采样（高级）" Margin="0,0,0,4"/>
+            <TextBlock FontSize="14" FontWeight="Bold" Text="校准（全局）" Margin="0,0,0,4"/>
+
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="8">
+                <TextBlock VerticalAlignment="Center" Width="110" Text="参考（dB）" />
+                <Slider Width="260" Minimum="0" Maximum="150" TickFrequency="1"
+                        Value="{Binding GlobalSettings.ReferenceDecibel, Mode=TwoWay}" />
+                <TextBlock VerticalAlignment="Center" Width="64"
+                           Text="{Binding GlobalSettings.ReferenceDecibel, StringFormat='{}{0:F1} dB'}" />
+            </StackPanel>
+
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" Spacing="8">
+                <Button Click="On_Calibrate" Content="校准" Padding="8,6" />
+                <TextBlock VerticalAlignment="Center" Text="当前全局放大倍数：" />
+                <TextBlock x:Name="TextMagnification" VerticalAlignment="Center" Text="1.000×" />
+            </StackPanel>
+
+            <TextBlock FontSize="12" Classes="muted"
+                       Text="校准对整个插件的所有组件生效（同一麦克风测量一致）。点击“校准”后插件会短暂录音一次，按当前参考值计算全局放大倍数。"
+                       TextWrapping="Wrap"/>
+
+            <TextBlock FontSize="14" FontWeight="Bold" Text="测量（高级）" Margin="0,8,0,4"/>
 
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="8">
                 <TextBlock VerticalAlignment="Center" Width="110" Text="持续监听麦克风" />

@@ -43,6 +43,7 @@ public partial class DecibelMonitorSettingsPage : SettingsPageBase
         _audioPeakMeter = audioPeakMeter;
         DataContext = this;
         RefreshDefaultDeviceText();
+        RefreshMagnificationText();
     }
 
     /// <summary>
@@ -60,6 +61,72 @@ public partial class DecibelMonitorSettingsPage : SettingsPageBase
         catch
         {
             TextDefaultDevice.Text = "（读取默认捕获设备失败）";
+        }
+    }
+
+    /// <summary>
+    /// 刷新当前全局放大倍数文本。
+    /// </summary>
+    private void RefreshMagnificationText()
+    {
+        TextMagnification.Text = $"{GlobalSettings.Magnification:F3}×";
+    }
+
+    /// <summary>
+    /// 校准按钮：短暂采样一次默认麦克风，按全局参考 dB 计算并保存全局放大倍数。
+    /// </summary>
+    public async void On_Calibrate(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        try
+        {
+            if (_audioPeakMeter is null)
+            {
+                _ = CommonTaskDialogs.ShowDialog("校准失败", "采样服务不可用。");
+                return;
+            }
+
+            float measuredLinear = await _audioPeakMeter
+                .CaptureSamplePeakAsync(_audioPeakMeter.DefaultCaptureMs).ConfigureAwait(false);
+
+            await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                if (measuredLinear <= 0f)
+                {
+                    try
+                    {
+                        _ = CommonTaskDialogs.ShowDialog("校准结果",
+                            "未检测到有效输入，无法完成校准。请确认麦克风已启用并有声源。");
+                    }
+                    catch { }
+                    return;
+                }
+
+                double targetDb = GlobalSettings.ReferenceDecibel;
+                double magnification = DecibelCalculator.CalculateMagnification(targetDb, measuredLinear);
+                double adjustedLinear = measuredLinear * magnification;
+                double adjustedDb = adjustedLinear > 0 ? 20.0 * Math.Log10(adjustedLinear) : double.NegativeInfinity;
+                double measuredDb = measuredLinear > 0 ? 20.0 * Math.Log10(measuredLinear) : double.NegativeInfinity;
+
+                GlobalSettings.Magnification = magnification;
+                RefreshMagnificationText();
+
+                try
+                {
+                    _ = CommonTaskDialogs.ShowDialog("校准结果",
+                        $"测量线性值: {measuredLinear:F4}\n" +
+                        $"测量 dBFS: {measuredDb:F1} dB\n" +
+                        $"目标 dB (显示): {targetDb:F1} dB\n" +
+                        $"目标 dBFS: {DecibelCalculator.DisplayDbToDbFs(targetDb):F1} dBFS\n" +
+                        $"全局放大倍数: {magnification:F6}×\n" +
+                        $"放大后 dBFS (验证): {adjustedDb:F1} dB\n\n" +
+                        "该校准对插件内所有组件生效。");
+                }
+                catch { }
+            });
+        }
+        catch (Exception ex)
+        {
+            try { _ = CommonTaskDialogs.ShowDialog("校准失败", $"发生异常：{ex.Message}"); } catch { }
         }
     }
 

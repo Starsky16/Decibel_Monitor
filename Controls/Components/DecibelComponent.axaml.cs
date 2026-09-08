@@ -31,6 +31,7 @@ public partial class DecibelComponent : ComponentBase<DecibelComponentSettings>,
 
     private readonly DispatcherTimer _updateTimer;
     private readonly AudioPeakMeter? _audioPeakMeter;
+    private readonly DecibelMonitorSettingsService? _settingsService;
     private volatile bool _disposed;
     private volatile bool _isUpdating;
 
@@ -65,8 +66,9 @@ public partial class DecibelComponent : ComponentBase<DecibelComponentSettings>,
     {
         InitializeComponent();
 
-        // 从宿主 DI 容器获取共享的峰值采样服务（单例，含并发保护与缓存）
+        // 从宿主 DI 容器获取共享的峰值采样服务（单例，含并发保护与缓存）与全局设置
         _audioPeakMeter = IAppHost.Host?.Services.GetService(typeof(AudioPeakMeter)) as AudioPeakMeter;
+        _settingsService = IAppHost.Host?.Services.GetService(typeof(DecibelMonitorSettingsService)) as DecibelMonitorSettingsService;
 
         _updateTimer = new DispatcherTimer
         {
@@ -93,7 +95,8 @@ public partial class DecibelComponent : ComponentBase<DecibelComponentSettings>,
             // 优先走实时计量；不可用时自动使用短时录音回退采样（带缓存与并发保护）
             float linear = await _audioPeakMeter.GetDefaultDevicePeakLinearAsync().ConfigureAwait(false);
 
-            double magnification = Settings?.Magnification ?? 1.0;
+            // 放大倍数为全局校准结果（同一麦克风所有组件显示一致）
+            double magnification = _settingsService?.Settings.Magnification ?? 1.0;
             double mapped = DecibelCalculator.LinearToDisplayDb(linear, magnification);
 
             // 绑定属性变更与提醒评估（含通知触发）都放回 UI 线程执行。
