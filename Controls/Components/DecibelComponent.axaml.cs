@@ -86,6 +86,13 @@ public partial class DecibelComponent : ComponentBase<DecibelComponentSettings>,
         _isUpdating = true;
         try
         {
+            // 应用设置的更新频率（设置变化后下一拍即生效）
+            int intervalMs = Math.Clamp(Settings?.UpdateIntervalMs ?? 200, 100, 5000);
+            if (Math.Abs(_updateTimer.Interval.TotalMilliseconds - intervalMs) > 0.5)
+            {
+                _updateTimer.Interval = TimeSpan.FromMilliseconds(intervalMs);
+            }
+
             if (_audioPeakMeter is null)
             {
                 CurrentDecibelValue = "无采样服务";
@@ -111,8 +118,9 @@ public partial class DecibelComponent : ComponentBase<DecibelComponentSettings>,
 
                 // "组件内提示"开关只影响组件上是否显示提示文字，不影响 Evaluate 触发的系统通知
                 bool showAlertText = Settings?.ShowAlertTextOnComponent ?? true;
+                bool showPrefix = Settings?.ShowDecibelPrefix ?? true;
 
-                CurrentDecibelValue = $"{mapped:F1}";
+                CurrentDecibelValue = showPrefix ? $"分贝: {mapped:F1}" : $"{mapped:F1}";
                 IsAlertActive = showAlertText && state.IsActive;
                 AlertDisplayText = state.Text;
             });

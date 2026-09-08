@@ -22,8 +22,26 @@
                 <ToggleSwitch IsChecked="{Binding Settings.ShowAlertTextOnComponent, Mode=TwoWay}" />
             </StackPanel>
 
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="8">
+                <TextBlock VerticalAlignment="Center" Width="88" Text="分贝: 前缀" />
+                <ToggleSwitch IsChecked="{Binding Settings.ShowDecibelPrefix, Mode=TwoWay}" />
+            </StackPanel>
+
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="8">
+                <TextBlock VerticalAlignment="Center" Width="88" Text="更新频率" />
+                <Slider Width="200" Minimum="100" Maximum="1000" TickFrequency="50"
+                        Value="{Binding Settings.UpdateIntervalMs, Mode=TwoWay}"
+                        IsSnapToTickEnabled="True" />
+                <TextBlock VerticalAlignment="Center" Width="110"
+                           Text="{Binding Settings.UpdateIntervalMs, StringFormat='{}{0} ms'}" />
+            </StackPanel>
+
             <TextBlock FontSize="12" Classes="muted"
-                       Text="开启后，当分贝超过通知设置中的阈值时，会在本组件上显示红色提示文字（如“请保持安静”）；关闭后仍会发送系统通知，但不再在组件上显示提示文字。"
+                       Text="显示设置：开启“分贝: 前缀”时数值显示为“分贝: 70.0”形式；“更新频率”越小数值响应越快（建议 100–500 ms）。"
+                       TextWrapping="Wrap"/>
+
+            <TextBlock FontSize="12" Classes="muted"
+                       Text="开启“组件内提示”后，当分贝超过通知设置中的阈值时，会在本组件上显示红色提示文字（如“请保持安静”）；关闭后仍会发送系统通知，但不再在组件上显示提示文字。"
                        TextWrapping="Wrap"/>
 
             <TextBlock FontSize="12" Classes="muted"

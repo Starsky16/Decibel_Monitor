@@ -57,6 +57,8 @@
 ### ① 组件设置（`DecibelComponentSettings`，每组件独立）
 
 - `ShowAlertTextOnComponent` (bool)：是否在组件上显示“超过阈值”的提示文字，默认 true；关闭后仍会发送系统通知，但不在组件上显示提示文字。
+- `ShowDecibelPrefix` (bool)：数值前是否显示“分贝:”前缀（如“分贝: 70.0”），默认 true。
+- `UpdateIntervalMs` (int)：数值更新频率（毫秒，100..1000，可配置范围 100..5000），默认 200。
 
 ### ② 通知提供方设置（`DecibelNotificationProviderSettings`，全局）
 
