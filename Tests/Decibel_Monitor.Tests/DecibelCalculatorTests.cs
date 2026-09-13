@@ -86,4 +86,42 @@ public class DecibelCalculatorTests
         Assert.True(result >= 0.0);
         Assert.True(result < 0.001);
     }
+
+    // ---- 边界与防御性行为 ----
+
+    [Fact]
+    public void LinearToDisplayDb_Should_ClampToScaleMax_WhenAmplifiedBeyondFullScale()
+    {
+        // 输入超满幅（含放大后超幅）一律 clamp 到刻度上限 150
+        Assert.Equal(150.0, DecibelCalculator.LinearToDisplayDb(2.0, 1.0), 6);
+        Assert.Equal(150.0, DecibelCalculator.LinearToDisplayDb(1.0, 1024.0), 6);
+    }
+
+    [Fact]
+    public void LinearToDisplayDb_Should_ClampInfinitiesToScaleRange()
+    {
+        Assert.Equal(150.0, DecibelCalculator.LinearToDisplayDb(double.PositiveInfinity, 1.0), 6);
+        Assert.Equal(0.0, DecibelCalculator.LinearToDisplayDb(double.NegativeInfinity, 1.0), 6);
+    }
+
+    [Fact]
+    public void LinearToDisplayDb_Should_MapSignalThresholdTo70()
+    {
+        // 线性阈值 0.0001（-80 dBFS）映射到 70，是"检测到有效信号"的基准点
+        Assert.Equal(70.0, DecibelCalculator.LinearToDisplayDb(0.0001, 1.0), 6);
+    }
+
+    [Fact]
+    public void CalculateMagnification_Should_RespectCustomMaxMagnification()
+    {
+        Assert.Equal(1.0, DecibelCalculator.CalculateMagnification(70.0, 0.0001, 64.0), 6);
+        Assert.Equal(64.0, DecibelCalculator.CalculateMagnification(150.0, 0.0001, 64.0), 6);
+    }
+
+    [Fact]
+    public void CalculateMagnification_Should_ClampToMax_WhenMeasuredIsNegative()
+    {
+        // 负的测量值视为"无法测量"，与 0 一样返回上限
+        Assert.Equal(1024.0, DecibelCalculator.CalculateMagnification(70.0, -1.0));
+    }
 }
