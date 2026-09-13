@@ -21,7 +21,7 @@ public sealed class DecibelMonitorSettingsService : IDisposable
     /// <summary>
     /// 当前全局设置（属性变化自动触发延迟保存）。
     /// </summary>
-    public DecibelMonitorGlobalSettings Settings { get; } = new();
+    public DecibelMonitorGlobalSettings Settings { get; }
 
     /// <param name="configFolder">插件配置目录（<c>PluginBase.PluginConfigFolder</c>）；为空时仅内存保存。</param>
     public DecibelMonitorSettingsService(string? configFolder)
@@ -29,9 +29,10 @@ public sealed class DecibelMonitorSettingsService : IDisposable
         if (!string.IsNullOrWhiteSpace(configFolder))
         {
             _filePath = Path.Combine(configFolder, "plugin-settings.json");
-            Load();
         }
 
+        // 整体反序列化得到完整实例：新增设置项无需在此处同步维护，避免漏拷贝
+        Settings = LoadSettings() ?? new DecibelMonitorGlobalSettings();
         Settings.PropertyChanged += OnSettingsPropertyChanged;
     }
 
@@ -44,25 +45,21 @@ public sealed class DecibelMonitorSettingsService : IDisposable
         _saveTimer = new Timer(_ => Save(), null, 400, Timeout.Infinite);
     }
 
-    private void Load()
+    /// <summary>
+    /// 从磁盘读取全局设置；文件不存在或解析失败时返回 null（调用方回退到默认值）。
+    /// </summary>
+    private DecibelMonitorGlobalSettings? LoadSettings()
     {
-        if (_filePath is null || !File.Exists(_filePath)) return;
+        if (_filePath is null || !File.Exists(_filePath)) return null;
         try
         {
             var json = File.ReadAllText(_filePath);
-            var loaded = JsonSerializer.Deserialize<DecibelMonitorGlobalSettings>(json);
-            if (loaded is not null)
-            {
-                Settings.FallbackCaptureMs = loaded.FallbackCaptureMs;
-                Settings.SignalThreshold = loaded.SignalThreshold;
-                Settings.EnableContinuousMonitoring = loaded.EnableContinuousMonitoring;
-                Settings.ReferenceDecibel = loaded.ReferenceDecibel;
-                Settings.Magnification = loaded.Magnification;
-            }
+            return JsonSerializer.Deserialize<DecibelMonitorGlobalSettings>(json);
         }
         catch
         {
             // 读取失败按默认值继续
+            return null;
         }
     }
 
