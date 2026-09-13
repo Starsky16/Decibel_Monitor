@@ -65,16 +65,23 @@ public sealed class DecibelNotificationProvider : NotificationProviderBase<Decib
         try
         {
             var text = Settings.AlertText;
-            var enabled = Settings.IsAlertEnabled;
-            var overThreshold = mappedDb > Settings.AlertThreshold;
 
-            if (enabled && overThreshold && DateTime.UtcNow >= _nextAlertTimeUtc)
+            // 判定逻辑位于 DecibelAlertEvaluator（纯函数，便于单元测试）
+            var decision = DecibelAlertEvaluator.Evaluate(
+                mappedDb,
+                Settings.AlertThreshold,
+                Settings.IsAlertEnabled,
+                DateTime.UtcNow,
+                _nextAlertTimeUtc,
+                Settings.AlertCooldownMinutes);
+
+            if (decision.ShouldNotify)
             {
-                _nextAlertTimeUtc = DateTime.UtcNow.AddMinutes(Math.Max(1, Settings.AlertCooldownMinutes));
+                _nextAlertTimeUtc = decision.NextAlertTimeUtc;
                 NotifyOverThreshold(text);
             }
 
-            return new DecibelAlertState(enabled && overThreshold, text);
+            return new DecibelAlertState(decision.IsActive, text);
         }
         catch (Exception ex)
         {

@@ -22,6 +22,7 @@
   <ItemGroup>
     <Compile Include="..\..\Services\DecibelCalculator.cs" Link="Services\DecibelCalculator.cs" />
     <Compile Include="..\..\Services\PeakSample.cs" Link="Services\PeakSample.cs" />
+    <Compile Include="..\..\Services\DecibelAlertEvaluator.cs" Link="Services\DecibelAlertEvaluator.cs" />
   </ItemGroup>
 
 </Project>
