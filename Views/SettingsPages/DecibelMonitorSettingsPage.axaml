@@ -67,7 +67,7 @@
 
             <TextBlock FontSize="14" FontWeight="Bold" Text="关于" Margin="0,8,0,4"/>
             <TextBlock FontSize="12" Classes="muted"
-                       Text="Decibel_Monitor 分贝监测插件。组件显示侧（校准）设置请右键组件 → 设置；提醒相关设置请在 通知 → 分贝提醒 中配置。插件仅在本机采样处理，不会上传任何音频数据。"
+                       Text="Decibel_Monitor 分贝监测插件。组件显示偏好请右键组件 → 设置；提醒相关设置请在 通知 → 分贝提醒 中配置；测量与校准为插件级全局设置，见本页上方。插件仅在本机采样处理，不会上传任何音频数据。"
                        TextWrapping="Wrap"/>
         </StackPanel>
     </ScrollViewer>

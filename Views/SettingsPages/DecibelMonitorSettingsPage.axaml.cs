@@ -118,7 +118,7 @@ public partial class DecibelMonitorSettingsPage : SettingsPageBase
                         $"目标 dB (显示): {targetDb:F1} dB\n" +
                         $"目标 dBFS: {DecibelCalculator.DisplayDbToDbFs(targetDb):F1} dBFS\n" +
                         $"全局放大倍数: {magnification:F6}×\n" +
-                        $"放大后 dBFS (验证): {adjustedDb:F1} dB\n\n" +
+                        $"放大后 dBFS（验证）: {adjustedDb:F1} dBFS\n\n" +
                         "该校准对插件内所有组件生效。");
                 }
                 catch { }
