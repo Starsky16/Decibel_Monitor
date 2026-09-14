@@ -21,6 +21,14 @@ public partial class DecibelComponent : ComponentBase<DecibelComponentSettings>,
     public static readonly StyledProperty<string> CurrentDecibelValueProperty =
         AvaloniaProperty.Register<DecibelComponent, string>(nameof(CurrentDecibelValue), "N/A");
 
+    /// <summary>当前是否处于"超过阈值"提醒状态（显示提示文字）。</summary>
+    public static readonly StyledProperty<bool> IsAlertActiveProperty =
+        AvaloniaProperty.Register<DecibelComponent, bool>(nameof(IsAlertActive));
+
+    /// <summary>超过阈值时显示的提示文字。</summary>
+    public static readonly StyledProperty<string> AlertDisplayTextProperty =
+        AvaloniaProperty.Register<DecibelComponent, string>(nameof(AlertDisplayText), "请保持安静");
+
     private readonly DispatcherTimer _updateTimer;
     private readonly AudioPeakMeter? _audioPeakMeter;
     private readonly DecibelMonitorSettingsService? _settingsService;
@@ -34,6 +42,24 @@ public partial class DecibelComponent : ComponentBase<DecibelComponentSettings>,
     {
         get => GetValue(CurrentDecibelValueProperty);
         private set => SetValue(CurrentDecibelValueProperty, value);
+    }
+
+    /// <summary>
+    /// 当前是否处于"超过阈值"提醒状态（用于显示提示文字）。
+    /// </summary>
+    public bool IsAlertActive
+    {
+        get => GetValue(IsAlertActiveProperty);
+        private set => SetValue(IsAlertActiveProperty, value);
+    }
+
+    /// <summary>
+    /// 超过阈值时显示的提示文字（取通知设置中的自定义文字）。
+    /// </summary>
+    public string AlertDisplayText
+    {
+        get => GetValue(AlertDisplayTextProperty);
+        private set => SetValue(AlertDisplayTextProperty, value);
     }
 
     public DecibelComponent()
@@ -80,14 +106,23 @@ public partial class DecibelComponent : ComponentBase<DecibelComponentSettings>,
             double magnification = _settingsService?.Settings.Magnification ?? 1.0;
             double mapped = DecibelCalculator.LinearToDisplayDb(linear, magnification);
 
-            // 绑定属性变更放回 UI 线程执行
+            // 绑定属性变更与提醒评估（含通知触发）都放回 UI 线程执行。
+            // 提醒提供方实例采用"动态读取"而非构造时缓存：插件加载早期组件可能先于
+            // 通知提供方（IHostedService）创建，缓存为 null 将导致提醒永久失效。
             Dispatcher.UIThread.Post(() =>
             {
                 if (_disposed) return;
 
+                var state = DecibelNotificationProvider.Instance?.Evaluate(mapped)
+                            ?? new DecibelAlertState(false, "请保持安静");
+
+                // "组件内提示"开关只影响组件上是否显示提示文字，不影响 Evaluate 触发的系统通知
+                bool showAlertText = Settings?.ShowAlertTextOnComponent ?? true;
                 bool showPrefix = Settings?.ShowDecibelPrefix ?? true;
 
                 CurrentDecibelValue = showPrefix ? $"分贝: {mapped:F1}" : $"{mapped:F1}";
+                IsAlertActive = showAlertText && state.IsActive;
+                AlertDisplayText = state.Text;
             });
         }
         catch (Exception)
@@ -113,3 +148,4 @@ public partial class DecibelComponent : ComponentBase<DecibelComponentSettings>,
         _updateTimer.Stop();
     }
 }
+

@@ -16,6 +16,14 @@
                        FontSize="16"
                        VerticalAlignment="Center"
                        Margin="5,0,0,0"/>
+            <!-- 超过阈值时显示的提示文字（红色） -->
+            <TextBlock Text="{Binding AlertDisplayText, Mode=OneWay}"
+                       IsVisible="{Binding IsAlertActive, Mode=OneWay}"
+                       FontSize="16"
+                       FontWeight="Bold"
+                       Foreground="#FFD32F2F"
+                       VerticalAlignment="Center"
+                       Margin="6,0,0,0"/>
         </StackPanel>
     </Grid>
 </ci:ComponentBase>
