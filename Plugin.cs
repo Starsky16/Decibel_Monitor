@@ -25,6 +25,9 @@ namespace Decibel_Monitor
             // 分贝提醒通知提供方（含"强调通知侧"设置控件）
             services.AddNotificationProvider<Services.DecibelNotificationProvider,
                 Controls.NotificationProviders.DecibelNotificationProviderSettingsControl>();
+
+            // 插件设置页（与其他设置项同层级）
+            services.AddSettingsPage<Views.SettingsPages.DecibelMonitorSettingsPage>();
         }
     }
 }
