@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO;
 using ClassIsland.Core.Abstractions;
 using ClassIsland.Core.Attributes;
 using ClassIsland.Core.Extensions.Registry;
@@ -28,6 +29,23 @@ namespace Decibel_Monitor
 
             // 插件设置页（与其他设置项同层级）
             services.AddSettingsPage<Views.SettingsPages.DecibelMonitorSettingsPage>();
+
+            // CI 集成测试标记：仅当显式开启环境变量时写入，
+            // 供 GitHub Actions 在启动 ClassIsland 后确认插件已成功加载（Initialize 完整执行、注册无异常）。
+            if (Environment.GetEnvironmentVariable("DECIBEL_MONITOR_CI_MARKER") == "1")
+            {
+                try
+                {
+                    Directory.CreateDirectory(PluginConfigFolder);
+                    File.WriteAllText(
+                        Path.Combine(PluginConfigFolder, "loaded.marker"),
+                        $"loaded at {DateTime.UtcNow:O}");
+                }
+                catch
+                {
+                    // 标记写入失败不应影响插件正常初始化
+                }
+            }
         }
     }
 }
