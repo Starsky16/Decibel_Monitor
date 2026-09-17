@@ -15,7 +15,7 @@ namespace Decibel_Monitor.Controls.Components;
     "\uEB88",
     "在主界面上显示麦克风分贝值。"
 )]
-public partial class DecibelComponent : ComponentBase<DecibelComponentSettings>, IDisposable
+public partial class DecibelComponent : ComponentBase<DecibelComponentSettings>
 {
     /// <summary>当前显示的分贝值文本。</summary>
     public static readonly StyledProperty<string> CurrentDecibelValueProperty =
@@ -32,7 +32,7 @@ public partial class DecibelComponent : ComponentBase<DecibelComponentSettings>,
     private readonly DispatcherTimer _updateTimer;
     private readonly AudioPeakMeter? _audioPeakMeter;
     private readonly DecibelMonitorSettingsService? _settingsService;
-    private volatile bool _disposed;
+    private volatile bool _isActive;
     private volatile bool _isUpdating;
 
     /// <summary>
@@ -74,8 +74,34 @@ public partial class DecibelComponent : ComponentBase<DecibelComponentSettings>,
         {
             Interval = TimeSpan.FromMilliseconds(200)
         };
+        // 定时器不在这里启动：组件生命周期改由视觉树决定（见 OnAttachedToVisualTree /
+        // OnDetachedFromVisualTree）。宿主通过 DI 根容器解析瞬态组件且从不调用释放方法，
+        // 若在构造期启动定时器，已启动的 DispatcherTimer 会被 Dispatcher 强引用，
+        // Tick 订阅闭包会永久钉住组件实例，导致组件重建后旧实例无法回收。
+    }
+
+    // 定时器随视觉树的附着/分离启停：宿主从 DI 根容器解析瞬态组件且从不调用释放方法，
+    // 不能依赖释放方法兜底，改为跟随视觉树生命周期，组件离开视觉树后即退订
+    // Tick 并停止定时器，避免已启动的 DispatcherTimer 通过 Tick 闭包钉住实例。
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+
+        // 可重入守卫：附着/分离可能成对多次发生，重复 Start 会导致重复计时
+        if (_isActive) return;
+        _isActive = true;
         _updateTimer.Tick += UpdateTimer_Tick;
         _updateTimer.Start();
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnDetachedFromVisualTree(e);
+
+        if (!_isActive) return;
+        _isActive = false;
+        _updateTimer.Tick -= UpdateTimer_Tick;
+        _updateTimer.Stop();
     }
 
     // 异步 Tick，内部会异步采样（不会阻塞 UI）
@@ -111,7 +137,7 @@ public partial class DecibelComponent : ComponentBase<DecibelComponentSettings>,
             // 通知提供方（IHostedService）创建，缓存为 null 将导致提醒永久失效。
             Dispatcher.UIThread.Post(() =>
             {
-                if (_disposed) return;
+                if (!_isActive) return;
 
                 var state = DecibelNotificationProvider.Instance?.Evaluate(mapped)
                             ?? new DecibelAlertState(false, "请保持安静");
@@ -129,7 +155,7 @@ public partial class DecibelComponent : ComponentBase<DecibelComponentSettings>,
         {
             Dispatcher.UIThread.Post(() =>
             {
-                if (_disposed) return;
+                if (!_isActive) return;
                 CurrentDecibelValue = "读取失败";
             });
         }
@@ -137,15 +163,6 @@ public partial class DecibelComponent : ComponentBase<DecibelComponentSettings>,
         {
             _isUpdating = false;
         }
-    }
-
-    public void Dispose()
-    {
-        if (_disposed) return;
-        _disposed = true;
-
-        _updateTimer.Tick -= UpdateTimer_Tick;
-        _updateTimer.Stop();
     }
 }
 
