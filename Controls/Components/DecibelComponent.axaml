@@ -24,6 +24,15 @@
                        Foreground="#FFD32F2F"
                        VerticalAlignment="Center"
                        Margin="6,0,0,0"/>
+            <!-- 热键筛选窗口状态指示：绿点=窗口关闭，红点=窗口开启（等待按键确认） -->
+            <Panel IsVisible="{Binding IsHotkeyIndicatorVisible, Mode=OneWay}"
+                   VerticalAlignment="Center"
+                   Margin="6,0,0,0">
+                <Ellipse Width="8" Height="8" Fill="#FF43A047"
+                         IsVisible="{Binding !IsHotkeyWindowOpen, Mode=OneWay}"/>
+                <Ellipse Width="8" Height="8" Fill="#FFD32F2F"
+                         IsVisible="{Binding IsHotkeyWindowOpen, Mode=OneWay}"/>
+            </Panel>
         </StackPanel>
     </Grid>
 </ci:ComponentBase>

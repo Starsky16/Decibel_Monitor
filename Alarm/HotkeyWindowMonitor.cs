@@ -12,7 +12,7 @@ namespace Decibel_Monitor.Alarm;
 /// <summary>
 /// 热键判定源的宿主接入：解析 KeyboardCapture 插件的全局键盘服务，把筛选窗口期间的
 /// <see cref="IKeyboardCaptureService.KeyDown"/> 事件转发给
-/// <see cref="HotkeyConfirmDecisionSource.HandleKeyPress"/>，并暴露窗口开关状态变化供组件显示红/绿点。
+/// <see cref="HotkeyConfirmDecisionSource.HandleKeyPress"/>。
 /// </summary>
 /// <remarks>
 /// <list type="bullet">
@@ -20,6 +20,8 @@ namespace Decibel_Monitor.Alarm;
 /// 本插件其余功能不受影响；解析前定时重试（KeyboardCapture 插件加载顺序不保证）。</description></item>
 /// <item><description>键盘事件在<strong>后台线程</strong>触发，而判定源状态由 UI 线程的采样编排推进，
 /// 为避免竞态，按键处理统一封送到 <see cref="Dispatcher.UIThread"/> 后执行。</description></item>
+/// <item><description>筛选窗口的开/关状态由 <see cref="HotkeyConfirmDecisionSource"/> 自身维护，
+/// 组件经 <see cref="AlertRuntimeService"/> 读取，本服务不做状态轮询。</description></item>
 /// </list>
 /// </remarks>
 public sealed class HotkeyWindowMonitor : IHostedService, IDisposable
@@ -27,42 +29,21 @@ public sealed class HotkeyWindowMonitor : IHostedService, IDisposable
     /// <summary>解析 KeyboardCapture 服务失败后的重试间隔。</summary>
     private static readonly TimeSpan ResolveRetryInterval = TimeSpan.FromSeconds(2);
 
-    /// <summary>筛选窗口状态轮询间隔（用于触发 <see cref="WindowStateChanged"/>）。</summary>
-    private static readonly TimeSpan WindowPollInterval = TimeSpan.FromMilliseconds(200);
-
     private readonly HotkeyConfirmDecisionSource _source;
-    private readonly DispatcherTimer _stateTimer;
     private readonly object _gate = new();
     private Timer? _retryTimer;
     private IKeyboardCaptureService? _capture;
-    private bool _lastWindowOpen;
     private bool _disposed;
-
-    /// <summary>
-    /// 筛选窗口开关状态变化事件。参数为当前是否开启（<see langword="true"/> 开窗，供组件显示红/绿点）。
-    /// 在 UI 线程触发。
-    /// </summary>
-    public event EventHandler<bool>? WindowStateChanged;
 
     /// <param name="source">热键判定源（由 DI 以单例注入）。</param>
     public HotkeyWindowMonitor(HotkeyConfirmDecisionSource source)
     {
         _source = source ?? throw new ArgumentNullException(nameof(source));
-
-        // Avalonia 的 DispatcherTimer 固定绑定 UI 线程，Tick 与事件回调都在 UI 线程触发。
-        _stateTimer = new DispatcherTimer { Interval = WindowPollInterval };
-        _stateTimer.Tick += StateTimer_Tick;
     }
-
-    /// <summary>KeyboardCapture 服务当前是否已解析成功。</summary>
-    public bool IsKeyboardCaptureAvailable => _capture is not null;
 
     /// <inheritdoc />
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        // 窗口状态轮询独立于 KeyboardCapture 是否可用：窗口开关由判定源决定。
-        _lastWindowOpen = _source.IsWindowOpen;
-        _stateTimer.Start();
         TryResolveAndSubscribe();
         return Task.CompletedTask;
     }
@@ -70,7 +51,7 @@ public sealed class HotkeyWindowMonitor : IHostedService, IDisposable
     /// <inheritdoc />
     public Task StopAsync(CancellationToken cancellationToken)
     {
-        StopSubscriptions();
+        Unsubscribe();
         return Task.CompletedTask;
     }
 
@@ -82,7 +63,7 @@ public sealed class HotkeyWindowMonitor : IHostedService, IDisposable
         var service = IAppHost.TryGetService<IKeyboardCaptureService>();
         if (service is null)
         {
-            // KeyboardCapture 插件可能晚于本插件加载，定时重试直到解析成功。
+            // KeyboardCapture 插件可能晚于本插件加载，定时重试直到解析成功
             lock (_gate)
             {
                 if (_disposed) return;
@@ -111,10 +92,10 @@ public sealed class HotkeyWindowMonitor : IHostedService, IDisposable
     /// </summary>
     private void OnKeyDown(object? sender, KeyboardKeyEventArgs e)
     {
-        // 未开窗或未启用时不消费按键，直接返回避免无谓封送。
+        // 未开窗或未启用时不消费按键，直接返回避免无谓封送
         if (!_source.IsEnabled || !_source.IsWindowOpen) return;
 
-        // 封送到 UI 线程，与采样编排（判定源状态推进）同线程，避免竞态。
+        // 封送到 UI 线程，与采样编排（判定源状态推进）同线程，避免竞态
         Dispatcher.UIThread.Post(() =>
         {
             if (_disposed) return;
@@ -140,17 +121,7 @@ public sealed class HotkeyWindowMonitor : IHostedService, IDisposable
         return result;
     }
 
-    /// <summary>轮询判定源窗口状态，变化时触发 <see cref="WindowStateChanged"/>。</summary>
-    private void StateTimer_Tick(object? sender, EventArgs e)
-    {
-        var open = _source.IsWindowOpen;
-        if (open == _lastWindowOpen) return;
-
-        _lastWindowOpen = open;
-        WindowStateChanged?.Invoke(this, open);
-    }
-
-    private void StopSubscriptions()
+    private void Unsubscribe()
     {
         lock (_gate)
         {
@@ -162,8 +133,6 @@ public sealed class HotkeyWindowMonitor : IHostedService, IDisposable
                 _capture = null;
             }
         }
-
-        _stateTimer.Stop();
     }
 
     /// <inheritdoc />
@@ -171,7 +140,6 @@ public sealed class HotkeyWindowMonitor : IHostedService, IDisposable
     {
         if (_disposed) return;
         _disposed = true;
-        StopSubscriptions();
-        _stateTimer.Tick -= StateTimer_Tick;
+        Unsubscribe();
     }
 }

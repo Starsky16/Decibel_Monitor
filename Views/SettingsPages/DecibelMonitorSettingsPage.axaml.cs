@@ -1,20 +1,29 @@
 using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using Avalonia.Interactivity;
 using ClassIsland.Core.Abstractions.Controls;
 using ClassIsland.Core.Attributes;
 using ClassIsland.Core.Controls;
 using ClassIsland.Core.Enums.SettingsWindow;
+using ClassIsland.Shared;
 using Decibel_Monitor.Alerting;
 using Decibel_Monitor.Measurement;
 using Decibel_Monitor.Models;
 using Decibel_Monitor.Services;
+using KeyboardCapture.Abstractions;
 
 namespace Decibel_Monitor.Views.SettingsPages;
 
+/// <summary>判定源优先级列表中的一项（视图模型，仅供设置页列表展示与排序）。</summary>
+/// <param name="Id">判定源标识（写回设置用）。</param>
+/// <param name="DisplayName">判定源显示名。</param>
+public sealed record AlertSourcePriorityItem(string Id, string DisplayName);
+
 /// <summary>
 /// Decibel_Monitor 插件设置页（与其他设置项同层级）。
-/// 承载插件全局配置与设备诊断。
+/// 承载插件全局配置、提醒判定源设置与设备诊断。
 /// </summary>
 [SettingsPageInfo(
     "Decibel_Monitor.PluginSettings",
@@ -25,27 +34,95 @@ namespace Decibel_Monitor.Views.SettingsPages;
 public partial class DecibelMonitorSettingsPage : SettingsPageBase
 {
     private readonly AudioPeakMeter? _audioPeakMeter;
+    private readonly AlertDecisionCoordinator? _coordinator;
 
     /// <summary>
-    /// 插件全局设置（用于绑定采样偏好）。
+    /// 插件全局设置（用于绑定采样偏好与各判定源设置）。
     /// </summary>
     public DecibelMonitorGlobalSettings GlobalSettings { get; }
 
     /// <summary>
+    /// 判定源优先级列表（按设置中的顺序排列，可经“上移/下移”调整）。
+    /// </summary>
+    public ObservableCollection<AlertSourcePriorityItem> PriorityItems { get; } = new();
+
+    /// <summary>
+    /// KeyboardCapture 插件是否可用（不可用时禁用“热键确认”判定源的全部设置项）。
+    /// </summary>
+    public bool KeyboardCaptureAvailable { get; }
+
+    /// <summary>
     /// 供 XAML 资源加载器 / 设计器使用的默认构造。
     /// </summary>
-    public DecibelMonitorSettingsPage() : this(new DecibelMonitorSettingsService(null), null)
+    public DecibelMonitorSettingsPage() : this(new DecibelMonitorSettingsService(null), null, null)
     {
     }
 
-    public DecibelMonitorSettingsPage(DecibelMonitorSettingsService settingsService, AudioPeakMeter? audioPeakMeter = null)
+    public DecibelMonitorSettingsPage(
+        DecibelMonitorSettingsService settingsService,
+        AudioPeakMeter? audioPeakMeter = null,
+        AlertDecisionCoordinator? coordinator = null)
     {
         InitializeComponent();
         GlobalSettings = settingsService.Settings;
         _audioPeakMeter = audioPeakMeter;
+        _coordinator = coordinator;
+        KeyboardCaptureAvailable = IAppHost.TryGetService<IKeyboardCaptureService>() is not null;
+
         DataContext = this;
+        RebuildPriorityItems();
         RefreshDefaultDeviceText();
         RefreshMagnificationText();
+    }
+
+    /// <summary>
+    /// 按设置中的优先级顺序重建列表；设置中未列出的判定源按仲裁模块的顺序追加到末尾。
+    /// </summary>
+    private void RebuildPriorityItems()
+    {
+        PriorityItems.Clear();
+        if (_coordinator is null) return;
+
+        var sources = _coordinator.Sources;
+        var ordered = new List<IAlertDecisionSource>();
+        foreach (var id in GlobalSettings.SourcePriorityOrder ?? new List<string>())
+        {
+            var matched = sources.FirstOrDefault(s => s.Id == id);
+            if (matched is not null && ordered.All(o => o.Id != matched.Id)) ordered.Add(matched);
+        }
+
+        foreach (var source in sources)
+        {
+            if (ordered.All(o => o.Id != source.Id)) ordered.Add(source);
+        }
+
+        foreach (var source in ordered)
+        {
+            PriorityItems.Add(new AlertSourcePriorityItem(source.Id, source.DisplayName));
+        }
+    }
+
+    /// <summary>把列表当前顺序写回设置（运行时编排服务会在下一拍应用到仲裁模块）。</summary>
+    private void SavePriorityOrder()
+    {
+        GlobalSettings.SourcePriorityOrder = PriorityItems.Select(i => i.Id).ToList();
+    }
+
+    /// <summary>"上移"按钮：把选中判定源的优先级提高一位。</summary>
+    public void On_MovePriorityUp(object? sender, RoutedEventArgs e) => MovePriority(-1);
+
+    /// <summary>"下移"按钮：把选中判定源的优先级降低一位。</summary>
+    public void On_MovePriorityDown(object? sender, RoutedEventArgs e) => MovePriority(1);
+
+    private void MovePriority(int offset)
+    {
+        var index = ListPriorityOrder.SelectedIndex;
+        var target = index + offset;
+        if (index < 0 || target < 0 || target >= PriorityItems.Count) return;
+
+        PriorityItems.Move(index, target);
+        ListPriorityOrder.SelectedIndex = target;
+        SavePriorityOrder();
     }
 
     /// <summary>
@@ -164,4 +241,3 @@ public partial class DecibelMonitorSettingsPage : SettingsPageBase
         }
     }
 }
-
