@@ -1,5 +1,5 @@
 using System;
-using Decibel_Monitor.Services;
+using Decibel_Monitor.Measurement;
 
 namespace Decibel_Monitor.Tests;
 

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using ClassIsland.Core.Abstractions;
 using ClassIsland.Core.Attributes;
@@ -18,13 +18,13 @@ namespace Decibel_Monitor
             services.AddSingleton(globalSettingsService);
 
             // 共享的麦克风峰值采样服务（单例，构造时读取全局采样偏好）
-            services.AddSingleton<Services.AudioPeakMeter>();
+            services.AddSingleton<Measurement.AudioPeakMeter>();
 
             // 一次性注册组件与其设置控件（不要重复注册）
             services.AddComponent<Controls.Components.DecibelComponent, Controls.ComponentSettings.DecibelComponentSettingsControl>();
 
             // 分贝提醒通知提供方（含"强调通知侧"设置控件）
-            services.AddNotificationProvider<Services.DecibelNotificationProvider,
+            services.AddNotificationProvider<Alerting.DecibelNotificationProvider,
                 Controls.NotificationProviders.DecibelNotificationProviderSettingsControl>();
 
             // 插件设置页（与其他设置项同层级）

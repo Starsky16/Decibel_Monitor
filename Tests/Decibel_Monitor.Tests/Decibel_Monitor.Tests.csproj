@@ -20,9 +20,9 @@
 
   <!-- 仅编译纯逻辑源文件（不依赖 Windows / NAudio），便于在任意平台运行测试 -->
   <ItemGroup>
-    <Compile Include="..\..\Services\DecibelCalculator.cs" Link="Services\DecibelCalculator.cs" />
-    <Compile Include="..\..\Services\PeakSample.cs" Link="Services\PeakSample.cs" />
-    <Compile Include="..\..\Services\DecibelAlertEvaluator.cs" Link="Services\DecibelAlertEvaluator.cs" />
+    <Compile Include="..\..\Alerting\DecibelCalculator.cs" Link="Alerting\DecibelCalculator.cs" />
+    <Compile Include="..\..\Alerting\DecibelAlertEvaluator.cs" Link="Alerting\DecibelAlertEvaluator.cs" />
+    <Compile Include="..\..\Measurement\PeakSample.cs" Link="Measurement\PeakSample.cs" />
   </ItemGroup>
 
 </Project>

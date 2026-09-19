@@ -4,6 +4,8 @@ using Avalonia.Threading;
 using ClassIsland.Core.Abstractions.Controls;
 using ClassIsland.Core.Attributes;
 using ClassIsland.Shared;
+using Decibel_Monitor.Alerting;
+using Decibel_Monitor.Measurement;
 using Decibel_Monitor.Services;
 using DecibelComponentSettings = Decibel_Monitor.Models.ComponentSettings.DecibelComponentSettings;
 

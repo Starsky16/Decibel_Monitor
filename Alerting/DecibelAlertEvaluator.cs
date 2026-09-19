@@ -1,6 +1,6 @@
 using System;
 
-namespace Decibel_Monitor.Services;
+namespace Decibel_Monitor.Alerting;
 
 /// <summary>
 /// 分贝提醒评估结果。

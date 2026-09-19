@@ -1,6 +1,6 @@
 using System;
 
-namespace Decibel_Monitor.Services;
+namespace Decibel_Monitor.Alerting;
 
 /// <summary>
 /// 分贝换算纯函数工具类（与 UI / 音频设备无关，便于单元测试）。

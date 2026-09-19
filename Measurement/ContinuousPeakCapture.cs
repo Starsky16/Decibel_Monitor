@@ -2,7 +2,7 @@ using System;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
 
-namespace Decibel_Monitor.Services;
+namespace Decibel_Monitor.Measurement;
 
 /// <summary>
 /// 常驻静默捕获流：以 WASAPI 共享模式持续读取默认麦克风峰值（仅计算峰值、不保存音频）。

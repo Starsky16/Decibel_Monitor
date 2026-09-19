@@ -5,7 +5,7 @@ using ClassIsland.Core.Models.Notification;
 using Decibel_Monitor.Models.NotificationProviderSettings;
 using Microsoft.Extensions.Logging;
 
-namespace Decibel_Monitor.Services;
+namespace Decibel_Monitor.Alerting;
 
 /// <summary>
 /// 分贝提醒通知提供方。

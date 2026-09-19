@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
 
-namespace Decibel_Monitor.Services;
+namespace Decibel_Monitor.Measurement;
 
 /// <summary>
 /// 显式（一次性）采样：按 AudioMeterInformation → WasapiCapture → WaveInEvent 顺序回退，
