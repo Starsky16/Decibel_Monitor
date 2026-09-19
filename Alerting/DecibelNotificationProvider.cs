@@ -9,16 +9,15 @@ namespace Decibel_Monitor.Alerting;
 
 /// <summary>
 /// 分贝提醒通知提供方。
-/// 负责集中评估"当前分贝值是否超过阈值"并触发 ClassIsland 提醒（带冷却防刷屏），
-/// 同时向组件返回评估状态用于显示提示文字。
+/// 负责发出 ClassIsland 醒目提醒（强调通知与语音均由宿主通知系统负责），
+/// 文案来自设置中的 <see cref="DecibelNotificationProviderSettings.AlertText"/>。
 /// </summary>
 /// <remarks>
-/// 修复说明：
-/// 1. 由非泛型 <see cref="NotificationProviderBase"/> 改为泛型
-///    <see cref="NotificationProviderBase{TSettings}"/>，从而获得宿主自动持久化的设置
-///    （"强调通知侧"的设置项），并声明 <see cref="NotificationProviderInfo.HasSettings"/>。
-/// 2. 注册 <see cref="NotificationChannelInfo"/> 渠道，并通过 <c>Channel(...)</c> 发送，
-///    与 ClassIsland 内置通知提供方保持一致，避免使用空渠道 GUID。
+/// 边界说明：<strong>本提供方只负责"发什么内容"，不做阈值/冷却/启停判定</strong>——
+/// 那部分收敛到插件设置页的判定源（<see cref="IAlertDecisionSource"/>）与
+/// 仲裁模块（<see cref="AlertDecisionCoordinator"/>），避免双重判定门槛。
+/// 宿主接入仍走 <see cref="NotificationProviderBase{TSettings}"/> 以获取自动持久化的设置，
+/// 并经 <see cref="NotificationChannelInfo"/> 渠道发送，与 ClassIsland 内置提供方一致。
 /// </remarks>
 [NotificationProviderInfo(
     "54f1b836-efa4-4755-bbac-7460f697cbb0",
@@ -41,8 +40,6 @@ public sealed class DecibelNotificationProvider : NotificationProviderBase<Decib
 
     private readonly ILogger<DecibelNotificationProvider>? _logger;
 
-    private DateTime _nextAlertTimeUtc = DateTime.MinValue;
-
     /// <summary>
     /// 当前通知提供方实例（宿主启动后由 DI 以单例方式创建）。
     /// </summary>
@@ -55,39 +52,20 @@ public sealed class DecibelNotificationProvider : NotificationProviderBase<Decib
     }
 
     /// <summary>
-    /// 评估当前分贝映射值是否超阈值；需要时（超阈值且冷却已过）发送提醒。
-    /// 供组件在每个刷新周期调用，避免组件自己维护提醒状态。
+    /// 发出一次"超过分贝阈值"提醒，文案取设置中的提醒正文。
+    /// 调用方（仲裁模块 / 运行时编排）负责判定"是否该提醒"。
     /// </summary>
-    /// <param name="mappedDb">当前分贝映射值（显示刻度 0..150）。</param>
-    /// <returns>评估状态：是否处于"超过阈值"提醒状态及提醒文字。</returns>
-    public DecibelAlertState Evaluate(double mappedDb)
+    /// <param name="text">提醒正文；为空时回退到设置中的提醒正文。</param>
+    public void Notify(string? text = null)
     {
         try
         {
-            var text = Settings.AlertText;
-
-            // 判定逻辑位于 DecibelAlertEvaluator（纯函数，便于单元测试）
-            var decision = DecibelAlertEvaluator.Evaluate(
-                mappedDb,
-                Settings.AlertThreshold,
-                Settings.IsAlertEnabled,
-                DateTime.UtcNow,
-                _nextAlertTimeUtc,
-                Settings.AlertCooldownMinutes);
-
-            if (decision.ShouldNotify)
-            {
-                _nextAlertTimeUtc = decision.NextAlertTimeUtc;
-                NotifyOverThreshold(text);
-            }
-
-            return new DecibelAlertState(decision.IsActive, text);
+            NotifyOverThreshold(string.IsNullOrWhiteSpace(text) ? Settings.AlertText : text);
         }
         catch (Exception ex)
         {
-            // 评估失败不应影响组件主功能，仅记录日志以便诊断
-            _logger?.LogWarning(ex, "评估分贝提醒状态失败。");
-            return new DecibelAlertState(false, Settings.AlertText);
+            // 通知失败不应影响主功能
+            _logger?.LogWarning(ex, "发送分贝提醒失败。");
         }
     }
 
@@ -97,21 +75,13 @@ public sealed class DecibelNotificationProvider : NotificationProviderBase<Decib
     /// <param name="text">提醒正文。</param>
     private void NotifyOverThreshold(string text)
     {
-        try
+        var request = new NotificationRequest
         {
-            var request = new NotificationRequest
-            {
-                ChannelId = Guid.Parse(OverThresholdChannelId),
-                MaskContent = NotificationContent.CreateSimpleTextContent(text),
-                OverlayContent = NotificationContent.CreateSimpleTextContent(text, x => x.Duration = TimeSpan.FromSeconds(30)),
-            };
-            Channel(OverThresholdChannelId).ShowNotification(request);
-        }
-        catch (Exception ex)
-        {
-            // 通知失败不应影响组件的主功能
-            _logger?.LogWarning(ex, "发送分贝提醒失败。");
-        }
+            ChannelId = Guid.Parse(OverThresholdChannelId),
+            MaskContent = NotificationContent.CreateSimpleTextContent(text),
+            OverlayContent = NotificationContent.CreateSimpleTextContent(text, x => x.Duration = TimeSpan.FromSeconds(30)),
+        };
+        Channel(OverThresholdChannelId).ShowNotification(request);
     }
 
     /// <summary>
@@ -125,4 +95,3 @@ public sealed class DecibelNotificationProvider : NotificationProviderBase<Decib
         }
     }
 }
-

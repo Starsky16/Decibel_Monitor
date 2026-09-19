@@ -1,11 +1,12 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace Decibel_Monitor.Models.ComponentSettings;
 
 /// <summary>
 /// 分贝组件的设置。每个组件实例独立持久化，仅保留与"小组件显示侧"相关的显示偏好。
-/// 测量/校准（参考 dB、放大倍数）为全局设置，位于插件设置页（DecibelMonitorGlobalSettings）；
-/// 提醒相关设置在通知提供方设置（DecibelNotificationProviderSettings）。
+/// 测量/校准（参考 dB、放大倍数）与提醒判定（各判定源的启用/阈值/冷却等）为全局设置，
+/// 位于插件设置页（DecibelMonitorGlobalSettings）；提醒正文在通知提供方设置
+/// （DecibelNotificationProviderSettings）。
 /// </summary>
 public partial class DecibelComponentSettings : ObservableObject
 {

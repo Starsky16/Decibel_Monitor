@@ -148,4 +148,43 @@ public class AlertDecisionCoordinatorTests
 
         Assert.Equal(new[] { "a", "b" }, new[] { coordinator.Sources[0].Id, coordinator.Sources[1].Id });
     }
+
+    [Fact]
+    public void ApplyPriorityOrder_Should_ReorderSources_AndTakeEffectOnNextDecide()
+    {
+        var low = new FakeSource("low", shouldAlert: true);
+        var high = new FakeSource("high", shouldAlert: true);
+        var coordinator = new AlertDecisionCoordinator(new[] { low, high }, new[] { "high", "low" });
+
+        coordinator.ApplyPriorityOrder(new[] { "low", "high" });
+
+        Assert.Equal(new[] { "low", "high" }, new[] { coordinator.Sources[0].Id, coordinator.Sources[1].Id });
+        Assert.Equal("low", coordinator.Decide(Context, Now).TriggerSourceId);
+    }
+
+    [Fact]
+    public void ApplyPriorityOrder_Should_IgnoreEmptyOrder()
+    {
+        var a = new FakeSource("a", shouldAlert: false);
+        var b = new FakeSource("b", shouldAlert: false);
+        var coordinator = new AlertDecisionCoordinator(new[] { a, b }, new[] { "b", "a" });
+
+        coordinator.ApplyPriorityOrder(Array.Empty<string>());
+        coordinator.ApplyPriorityOrder(null);
+
+        Assert.Equal(new[] { "b", "a" }, new[] { coordinator.Sources[0].Id, coordinator.Sources[1].Id });
+    }
+
+    [Fact]
+    public void ApplyPriorityOrder_Should_AppendUnlistedSources()
+    {
+        var a = new FakeSource("a", shouldAlert: false);
+        var b = new FakeSource("b", shouldAlert: false);
+        var c = new FakeSource("c", shouldAlert: false);
+        var coordinator = new AlertDecisionCoordinator(new[] { a, b, c });
+
+        coordinator.ApplyPriorityOrder(new[] { "b" });
+
+        Assert.Equal(new[] { "b", "a", "c" }, new[] { coordinator.Sources[0].Id, coordinator.Sources[1].Id, coordinator.Sources[2].Id });
+    }
 }
