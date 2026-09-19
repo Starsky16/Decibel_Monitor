@@ -22,6 +22,12 @@
   <ItemGroup>
     <Compile Include="..\..\Alerting\DecibelCalculator.cs" Link="Alerting\DecibelCalculator.cs" />
     <Compile Include="..\..\Alerting\DecibelAlertEvaluator.cs" Link="Alerting\DecibelAlertEvaluator.cs" />
+    <Compile Include="..\..\Alerting\AverageVolumeAlertEvaluator.cs" Link="Alerting\AverageVolumeAlertEvaluator.cs" />
+    <Compile Include="..\..\Alerting\HotkeyDefinition.cs" Link="Alerting\HotkeyDefinition.cs" />
+    <Compile Include="..\..\Alerting\IAlertDecisionSource.cs" Link="Alerting\IAlertDecisionSource.cs" />
+    <Compile Include="..\..\Alerting\AutoThresholdDecisionSource.cs" Link="Alerting\AutoThresholdDecisionSource.cs" />
+    <Compile Include="..\..\Alerting\HotkeyConfirmDecisionSource.cs" Link="Alerting\HotkeyConfirmDecisionSource.cs" />
+    <Compile Include="..\..\Alerting\AlertDecisionCoordinator.cs" Link="Alerting\AlertDecisionCoordinator.cs" />
     <Compile Include="..\..\Measurement\PeakSample.cs" Link="Measurement\PeakSample.cs" />
   </ItemGroup>
 
