@@ -20,6 +20,28 @@ namespace Decibel_Monitor
             // 共享的麦克风峰值采样服务（单例，构造时读取全局采样偏好）
             services.AddSingleton<Measurement.AudioPeakMeter>();
 
+            // ── 提醒链路：判定源 → 仲裁模块 → 运行时编排 ──
+            // 判定源各自独立启用（启用状态与参数由设置页控制），默认均未启用。
+            services.AddSingleton<Alerting.AutoThresholdDecisionSource>();
+            services.AddSingleton<Alerting.HotkeyConfirmDecisionSource>();
+            services.AddSingleton<Alerting.IAlertDecisionSource>(
+                sp => sp.GetRequiredService<Alerting.AutoThresholdDecisionSource>());
+            services.AddSingleton<Alerting.IAlertDecisionSource>(
+                sp => sp.GetRequiredService<Alerting.HotkeyConfirmDecisionSource>());
+
+            // 仲裁模块：自持判定源集合与优先级配置，并归口发出提醒通知
+            services.AddSingleton(sp => new Alerting.AlertDecisionCoordinator(
+                sp.GetServices<Alerting.IAlertDecisionSource>(),
+                sourcePriorityOrder: null));
+
+            // 热键筛选窗口监视：KeyboardCapture 为非必需依赖，未安装时降级为空转
+            services.AddSingleton<Alarm.HotkeyWindowMonitor>();
+            services.AddHostedService(sp => sp.GetRequiredService<Alarm.HotkeyWindowMonitor>());
+
+            // 提醒运行时编排：采样 → 判定 → 执行提醒 → 防自激
+            services.AddSingleton<Alarm.AlertRuntimeService>();
+            services.AddHostedService(sp => sp.GetRequiredService<Alarm.AlertRuntimeService>());
+
             // 一次性注册组件与其设置控件（不要重复注册）
             services.AddComponent<Controls.Components.DecibelComponent, Controls.ComponentSettings.DecibelComponentSettingsControl>();
 
