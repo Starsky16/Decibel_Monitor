@@ -1,6 +1,6 @@
 using System;
 
-namespace Decibel_Monitor.Services;
+namespace Decibel_Monitor.Measurement;
 
 /// <summary>
 /// 音频峰值解析纯函数工具类（不依赖 NAudio 具体类型，便于单元测试）。

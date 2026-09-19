@@ -2,7 +2,7 @@ using System;
 using System.Linq;
 using NAudio.CoreAudioApi;
 
-namespace Decibel_Monitor.Services;
+namespace Decibel_Monitor.Measurement;
 
 /// <summary>
 /// 捕获设备枚举与缓存（默认捕获设备 / 设备描述列表，枚举结果带 5 秒缓存）。

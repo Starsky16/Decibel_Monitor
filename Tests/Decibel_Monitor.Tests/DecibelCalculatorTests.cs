@@ -1,4 +1,4 @@
-using Decibel_Monitor.Services;
+using Decibel_Monitor.Alerting;
 
 namespace Decibel_Monitor.Tests;
 

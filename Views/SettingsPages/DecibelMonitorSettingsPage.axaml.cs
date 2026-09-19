@@ -5,6 +5,8 @@ using ClassIsland.Core.Abstractions.Controls;
 using ClassIsland.Core.Attributes;
 using ClassIsland.Core.Controls;
 using ClassIsland.Core.Enums.SettingsWindow;
+using Decibel_Monitor.Alerting;
+using Decibel_Monitor.Measurement;
 using Decibel_Monitor.Models;
 using Decibel_Monitor.Services;
 

@@ -1,8 +1,9 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Decibel_Monitor.Services;
 
-namespace Decibel_Monitor.Services;
+namespace Decibel_Monitor.Measurement;
 
 /// <summary>
 /// 麦克风峰值采样服务。

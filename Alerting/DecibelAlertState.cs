@@ -1,4 +1,4 @@
-namespace Decibel_Monitor.Services;
+namespace Decibel_Monitor.Alerting;
 
 /// <summary>
 /// 分贝提醒提供方对一次分贝值的评估结果。
