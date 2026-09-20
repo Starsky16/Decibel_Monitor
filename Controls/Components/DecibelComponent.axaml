@@ -16,7 +16,7 @@
                        FontSize="16"
                        VerticalAlignment="Center"
                        Margin="5,0,0,0"/>
-            <!-- 提醒状态点：绿=正常，红=提醒触发中（超阈值/筛选窗口开启/冷却期） -->
+            <!-- 提醒状态点：绿=正常，红=提醒触发中（超阈值/冷却期），红绿闪动=筛选窗口开启待按键确认 -->
             <Panel IsVisible="{Binding IsIndicatorVisible, Mode=OneWay}"
                    VerticalAlignment="Center"
                    Margin="6,0,0,0">
