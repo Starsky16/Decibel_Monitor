@@ -63,6 +63,9 @@ public sealed class AlertRuntimeService : IHostedService, IDisposable
     /// <summary>是否至少启用了一个判定源（决定组件是否显示提醒状态点）。</summary>
     public bool IsAnySourceEnabled => _autoSource.IsEnabled || _hotkeySource.IsEnabled;
 
+    /// <summary>热键判定源所处的筛选窗口是否开启（组件据此把状态点显示为红绿闪动）。</summary>
+    public bool IsHotkeyWindowOpen => _hotkeySource.IsWindowOpen;
+
     /// <param name="audioPeakMeter">共享的麦克风峰值采样服务。</param>
     /// <param name="settingsService">插件全局设置服务（可空；缺省时使用判定源内置默认参数）。</param>
     /// <param name="coordinator">仲裁模块（自持判定源集合与优先级配置）。</param>

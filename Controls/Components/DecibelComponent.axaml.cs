@@ -25,9 +25,12 @@ public partial class DecibelComponent : ComponentBase<DecibelComponentSettings>
     public static readonly StyledProperty<bool> IsIndicatorVisibleProperty =
         AvaloniaProperty.Register<DecibelComponent, bool>(nameof(IsIndicatorVisible));
 
-    /// <summary>提醒状态点是否为红色（提醒触发中、筛选窗口开启或处于冷却期）。</summary>
+    /// <summary>提醒状态点是否为红色：红=提醒触发中（含冷却期），绿=正常。</summary>
     public static readonly StyledProperty<bool> IsIndicatorAlertProperty =
         AvaloniaProperty.Register<DecibelComponent, bool>(nameof(IsIndicatorAlert));
+
+    /// <summary>筛选窗口开启时状态点的闪烁半周期（毫秒）：红灯、绿灯各持续这么久。</summary>
+    private const int BlinkHalfPeriodMs = 400;
 
     private readonly DispatcherTimer _updateTimer;
     private readonly AlertRuntimeService? _runtimeService;
@@ -53,7 +56,8 @@ public partial class DecibelComponent : ComponentBase<DecibelComponentSettings>
     }
 
     /// <summary>
-    /// 提醒状态点是否为红色：红=提醒触发中（含筛选窗口开启与冷却期），绿=正常。
+    /// 提醒状态点是否为红色：红=提醒触发中（含冷却期），绿=正常；
+    /// 筛选窗口开启时在红绿之间交替，形成闪动。
     /// </summary>
     public bool IsIndicatorAlert
     {
@@ -111,8 +115,10 @@ public partial class DecibelComponent : ComponentBase<DecibelComponentSettings>
         _isUpdating = true;
         try
         {
-            // 应用设置的更新频率（设置变化后下一拍即生效）
+            // 应用设置的更新频率（设置变化后下一拍即生效）；
+            // 筛选窗口开启时收紧到闪烁半周期，保证红绿交替看得见
             int intervalMs = Math.Clamp(Settings?.UpdateIntervalMs ?? 200, 100, 5000);
+            if (_runtimeService?.IsHotkeyWindowOpen == true) intervalMs = Math.Min(intervalMs, BlinkHalfPeriodMs);
             if (Math.Abs(_updateTimer.Interval.TotalMilliseconds - intervalMs) > 0.5)
             {
                 _updateTimer.Interval = TimeSpan.FromMilliseconds(intervalMs);
@@ -133,9 +139,12 @@ public partial class DecibelComponent : ComponentBase<DecibelComponentSettings>
                 ? (showPrefix ? $"分贝: {_runtimeService.CurrentDecibel:F1}" : $"{_runtimeService.CurrentDecibel:F1}")
                 : "N/A";
 
-            // 单一状态点：红=提醒触发中（超阈值/筛选窗口开启/冷却期），绿=正常
+            // 单一状态点：红=提醒触发中（超阈值/冷却期），绿=正常；
+            // 筛选窗口开启时红绿交替闪动，与静态状态区分开
             IsIndicatorVisible = showIndicator && _runtimeService.IsAnySourceEnabled;
-            IsIndicatorAlert = _runtimeService.IsAlertStateActive;
+            IsIndicatorAlert = _runtimeService.IsHotkeyWindowOpen
+                ? Environment.TickCount64 / BlinkHalfPeriodMs % 2 == 0
+                : _runtimeService.IsAlertStateActive;
         }
         catch (Exception)
         {
