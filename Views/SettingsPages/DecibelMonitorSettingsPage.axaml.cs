@@ -19,7 +19,8 @@ namespace Decibel_Monitor.Views.SettingsPages;
 /// <summary>判定源优先级列表中的一项（视图模型，仅供设置页列表展示与排序）。</summary>
 /// <param name="Id">判定源标识（写回设置用）。</param>
 /// <param name="DisplayName">判定源显示名。</param>
-public sealed record AlertSourcePriorityItem(string Id, string DisplayName);
+/// <param name="Description">判定源简要说明。</param>
+public sealed record AlertSourcePriorityItem(string Id, string DisplayName, string Description);
 
 /// <summary>
 /// Decibel_Monitor 插件设置页（与其他设置项同层级）。
@@ -98,7 +99,7 @@ public partial class DecibelMonitorSettingsPage : SettingsPageBase
 
         foreach (var source in ordered)
         {
-            PriorityItems.Add(new AlertSourcePriorityItem(source.Id, source.DisplayName));
+            PriorityItems.Add(new AlertSourcePriorityItem(source.Id, source.DisplayName, source.Description));
         }
     }
 

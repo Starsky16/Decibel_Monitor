@@ -21,21 +21,13 @@ public partial class DecibelComponent : ComponentBase<DecibelComponentSettings>
     public static readonly StyledProperty<string> CurrentDecibelValueProperty =
         AvaloniaProperty.Register<DecibelComponent, string>(nameof(CurrentDecibelValue), "N/A");
 
-    /// <summary>当前是否处于"超过阈值"提醒状态（显示提示文字）。</summary>
-    public static readonly StyledProperty<bool> IsAlertActiveProperty =
-        AvaloniaProperty.Register<DecibelComponent, bool>(nameof(IsAlertActive));
+    /// <summary>是否显示提醒状态点（任一判定源已启用且组件设置未关闭时显示）。</summary>
+    public static readonly StyledProperty<bool> IsIndicatorVisibleProperty =
+        AvaloniaProperty.Register<DecibelComponent, bool>(nameof(IsIndicatorVisible));
 
-    /// <summary>超过阈值时显示的提示文字。</summary>
-    public static readonly StyledProperty<string> AlertDisplayTextProperty =
-        AvaloniaProperty.Register<DecibelComponent, string>(nameof(AlertDisplayText), "请保持安静");
-
-    /// <summary>热键判定源所处的筛选窗口是否开启（红点）。</summary>
-    public static readonly StyledProperty<bool> IsHotkeyWindowOpenProperty =
-        AvaloniaProperty.Register<DecibelComponent, bool>(nameof(IsHotkeyWindowOpen));
-
-    /// <summary>热键判定源是否已启用（决定是否显示红/绿点）。</summary>
-    public static readonly StyledProperty<bool> IsHotkeyIndicatorVisibleProperty =
-        AvaloniaProperty.Register<DecibelComponent, bool>(nameof(IsHotkeyIndicatorVisible));
+    /// <summary>提醒状态点是否为红色（提醒触发中、筛选窗口开启或处于冷却期）。</summary>
+    public static readonly StyledProperty<bool> IsIndicatorAlertProperty =
+        AvaloniaProperty.Register<DecibelComponent, bool>(nameof(IsIndicatorAlert));
 
     private readonly DispatcherTimer _updateTimer;
     private readonly AlertRuntimeService? _runtimeService;
@@ -52,35 +44,21 @@ public partial class DecibelComponent : ComponentBase<DecibelComponentSettings>
     }
 
     /// <summary>
-    /// 当前是否处于"超过阈值"提醒状态（用于显示提示文字）。
+    /// 是否显示提醒状态点（组件设置关闭或没有启用任何判定源时为 false）。
     /// </summary>
-    public bool IsAlertActive
+    public bool IsIndicatorVisible
     {
-        get => GetValue(IsAlertActiveProperty);
-        private set => SetValue(IsAlertActiveProperty, value);
+        get => GetValue(IsIndicatorVisibleProperty);
+        private set => SetValue(IsIndicatorVisibleProperty, value);
     }
 
     /// <summary>
-    /// 超过阈值时显示的提示文字（取通知提供方设置中的自定义文字）。
+    /// 提醒状态点是否为红色：红=提醒触发中（含筛选窗口开启与冷却期），绿=正常。
     /// </summary>
-    public string AlertDisplayText
+    public bool IsIndicatorAlert
     {
-        get => GetValue(AlertDisplayTextProperty);
-        private set => SetValue(AlertDisplayTextProperty, value);
-    }
-
-    /// <summary>热键判定源所处的筛选窗口是否开启（红/绿点）。</summary>
-    public bool IsHotkeyWindowOpen
-    {
-        get => GetValue(IsHotkeyWindowOpenProperty);
-        private set => SetValue(IsHotkeyWindowOpenProperty, value);
-    }
-
-    /// <summary>热键判定源是否已启用（决定是否显示红/绿点）。</summary>
-    public bool IsHotkeyIndicatorVisible
-    {
-        get => GetValue(IsHotkeyIndicatorVisibleProperty);
-        private set => SetValue(IsHotkeyIndicatorVisibleProperty, value);
+        get => GetValue(IsIndicatorAlertProperty);
+        private set => SetValue(IsIndicatorAlertProperty, value);
     }
 
     public DecibelComponent()
@@ -143,23 +121,21 @@ public partial class DecibelComponent : ComponentBase<DecibelComponentSettings>
             if (_runtimeService is null)
             {
                 CurrentDecibelValue = "无采样服务";
-                IsHotkeyIndicatorVisible = false;
+                IsIndicatorVisible = false;
                 return;
             }
 
-            // "组件内提示"开关只影响组件上是否显示提示文字，不影响提醒链路
-            bool showAlertText = Settings?.ShowAlertTextOnComponent ?? true;
+            // "提醒状态点"开关只影响组件上是否显示状态点，不影响提醒链路
+            bool showIndicator = Settings?.ShowStatusIndicator ?? true;
             bool showPrefix = Settings?.ShowDecibelPrefix ?? true;
 
             CurrentDecibelValue = _runtimeService.HasSample
                 ? (showPrefix ? $"分贝: {_runtimeService.CurrentDecibel:F1}" : $"{_runtimeService.CurrentDecibel:F1}")
                 : "N/A";
-            IsAlertActive = showAlertText && _runtimeService.IsTriggerActive;
-            AlertDisplayText = _runtimeService.AlertText;
 
-            // 热键筛选窗口红/绿点：仅热键判定源启用时显示
-            IsHotkeyIndicatorVisible = _runtimeService.IsHotkeySourceEnabled;
-            IsHotkeyWindowOpen = _runtimeService.IsHotkeyWindowOpen;
+            // 单一状态点：红=提醒触发中（超阈值/筛选窗口开启/冷却期），绿=正常
+            IsIndicatorVisible = showIndicator && _runtimeService.IsAnySourceEnabled;
+            IsIndicatorAlert = _runtimeService.IsAlertStateActive;
         }
         catch (Exception)
         {

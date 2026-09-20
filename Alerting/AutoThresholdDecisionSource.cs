@@ -28,6 +28,9 @@ public sealed class AutoThresholdDecisionSource : IAlertDecisionSource
     public string DisplayName => "自动提醒";
 
     /// <inheritdoc />
+    public string Description => "平均分贝超过阈值时立即提醒。";
+
+    /// <inheritdoc />
     public bool IsEnabled { get; set; }
 
     /// <summary>提醒阈值（显示刻度 0..150）。</summary>
@@ -39,8 +42,12 @@ public sealed class AutoThresholdDecisionSource : IAlertDecisionSource
     /// <summary>下一次允许提醒的时间（UTC）；<see cref="DateTime.MinValue"/> 表示从未提醒过。</summary>
     public DateTime NextAlertTimeUtc => _nextAlertTimeUtc;
 
-    /// <summary>当前是否处于"超过阈值"状态（供组件显示提示文字）。</summary>
+    /// <summary>当前是否处于"超过阈值"状态（供组件显示提醒状态）。</summary>
     public bool IsTriggerActive { get; private set; }
+
+    /// <inheritdoc />
+    public bool IsCoolingDown(DateTime nowUtc) =>
+        IsEnabled && _nextAlertTimeUtc != DateTime.MinValue && nowUtc < _nextAlertTimeUtc;
 
     /// <inheritdoc />
     public AlertDecision Decide(AlertContext context, DateTime nowUtc)

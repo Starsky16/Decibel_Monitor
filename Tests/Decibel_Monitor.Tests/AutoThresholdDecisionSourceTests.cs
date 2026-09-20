@@ -119,4 +119,39 @@ public class AutoThresholdDecisionSourceTests
         Assert.False(decision.ShouldAlert);
         Assert.False(decision.IsTriggerActive);
     }
+
+    [Fact]
+    public void IsCoolingDown_Should_BeTrue_AfterAlert_UntilCooldownElapsed()
+    {
+        var source = CreateSource(TimeSpan.FromMinutes(5));
+        Assert.False(source.IsCoolingDown(Now));
+
+        source.Decide(Context(120.0), Now);
+
+        Assert.True(source.IsCoolingDown(Now));
+        Assert.True(source.IsCoolingDown(Now.AddMinutes(4)));
+        Assert.False(source.IsCoolingDown(Now.AddMinutes(5)));
+    }
+
+    [Fact]
+    public void IsCoolingDown_Should_BeFalse_WhenDisabled()
+    {
+        var source = CreateSource(TimeSpan.FromMinutes(5));
+        source.Decide(Context(120.0), Now);
+
+        source.IsEnabled = false;
+        source.Decide(Context(120.0), Now);
+
+        Assert.False(source.IsCoolingDown(Now.AddMinutes(1)));
+    }
+
+    [Fact]
+    public void IsCoolingDown_Should_BeFalse_WhenCooldownIsZero()
+    {
+        var source = CreateSource(TimeSpan.Zero);
+
+        source.Decide(Context(120.0), Now);
+
+        Assert.False(source.IsCoolingDown(Now));
+    }
 }

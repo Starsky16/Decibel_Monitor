@@ -54,17 +54,14 @@ public sealed class AlertRuntimeService : IHostedService, IDisposable
     /// <summary>是否已取得过至少一次采样（未取得时组件显示占位文本）。</summary>
     public bool HasSample { get; private set; }
 
-    /// <summary>当前是否有任一判定源处于"超过阈值"状态（供组件显示提示文字）。</summary>
-    public bool IsTriggerActive { get; private set; }
+    /// <summary>
+    /// 当前是否应点亮提醒状态点（红）：任一判定源处于超阈值、筛选窗口开启或冷却期。
+    /// 绿点表示上述条件均不成立。
+    /// </summary>
+    public bool IsAlertStateActive { get; private set; }
 
-    /// <summary>当前热键筛选窗口是否开启（供组件显示红/绿点）。</summary>
-    public bool IsHotkeyWindowOpen => _hotkeySource.IsWindowOpen;
-
-    /// <summary>热键判定源是否已启用（决定组件是否显示红/绿点）。</summary>
-    public bool IsHotkeySourceEnabled => _hotkeySource.IsEnabled;
-
-    /// <summary>提醒正文（取自通知提供方设置，供组件显示提示文字）。</summary>
-    public string AlertText => DecibelNotificationProvider.Instance?.Settings.AlertText ?? "请保持安静";
+    /// <summary>是否至少启用了一个判定源（决定组件是否显示提醒状态点）。</summary>
+    public bool IsAnySourceEnabled => _autoSource.IsEnabled || _hotkeySource.IsEnabled;
 
     /// <param name="audioPeakMeter">共享的麦克风峰值采样服务。</param>
     /// <param name="settingsService">插件全局设置服务（可空；缺省时使用判定源内置默认参数）。</param>
@@ -139,8 +136,13 @@ public sealed class AlertRuntimeService : IHostedService, IDisposable
 
             var decision = _coordinator.Decide(new AlertContext(mapped, average), DateTime.UtcNow);
 
-            // 任一判定源处于超阈值状态即视为"提醒中"（供组件显示提示文字）
-            IsTriggerActive = _autoSource.IsTriggerActive || _hotkeySource.IsTriggerActive;
+            // 提醒状态点：超阈值、筛选窗口开启、以及提醒后的冷却期都点亮（红点），其余为绿点
+            var nowUtc = DateTime.UtcNow;
+            IsAlertStateActive = _autoSource.IsTriggerActive
+                || _hotkeySource.IsTriggerActive
+                || _hotkeySource.IsWindowOpen
+                || _autoSource.IsCoolingDown(nowUtc)
+                || _hotkeySource.IsCoolingDown(nowUtc);
 
             if (!decision.ShouldAlert) return;
 
