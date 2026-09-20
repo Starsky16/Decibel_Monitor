@@ -47,6 +47,9 @@ public sealed class HotkeyConfirmDecisionSource : IAlertDecisionSource
     public string DisplayName => "热键确认";
 
     /// <inheritdoc />
+    public string Description => "超过阈值时开启筛选窗口，窗口内按下热键才提醒。";
+
+    /// <inheritdoc />
     public bool IsEnabled { get; set; }
 
     /// <summary>开启筛选窗口的分贝阈值（显示刻度 0..150）。</summary>
@@ -61,14 +64,18 @@ public sealed class HotkeyConfirmDecisionSource : IAlertDecisionSource
     /// <inheritdoc />
     public TimeSpan Cooldown { get; set; }
 
-    /// <summary>当前筛选窗口是否开启（供组件红/绿点显示）。</summary>
+    /// <summary>当前筛选窗口是否开启（供组件显示提醒状态）。</summary>
     public bool IsWindowOpen { get; private set; }
 
-    /// <summary>当前是否处于"超过阈值"状态（供组件显示提示文字）。</summary>
+    /// <summary>当前是否处于"超过阈值"状态（供组件显示提醒状态）。</summary>
     public bool IsTriggerActive { get; private set; }
 
     /// <summary>下一次允许提醒的时间（UTC）。</summary>
     public DateTime NextAlertTimeUtc => _nextAlertTimeUtc;
+
+    /// <inheritdoc />
+    public bool IsCoolingDown(DateTime nowUtc) =>
+        IsEnabled && _nextAlertTimeUtc != DateTime.MinValue && nowUtc < _nextAlertTimeUtc;
 
     /// <summary>
     /// 外部注入一次按键事件（后台钩子或测试直接调用）。

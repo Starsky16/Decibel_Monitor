@@ -23,13 +23,19 @@ public class AlertDecisionCoordinatorTests
 
         public string DisplayName => Id;
 
+        public string Description => Id;
+
         public bool IsEnabled { get; set; }
 
         public bool ShouldAlert { get; set; }
 
+        public bool IsCoolingDownValue { get; set; }
+
         public TimeSpan Cooldown => TimeSpan.Zero;
 
         public int DecideCount { get; private set; }
+
+        public bool IsCoolingDown(DateTime nowUtc) => IsCoolingDownValue;
 
         public AlertDecision Decide(AlertContext context, DateTime nowUtc)
         {

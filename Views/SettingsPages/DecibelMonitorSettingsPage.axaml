@@ -73,11 +73,15 @@
             <StackPanel Orientation="Horizontal" Spacing="12" Margin="0,4,0,0">
                 <StackPanel Spacing="4">
                     <TextBlock Text="判定源优先级" />
-                    <ListBox x:Name="ListPriorityOrder" Width="240" MinHeight="64"
+                    <ListBox x:Name="ListPriorityOrder" Width="280" MinHeight="64"
                              ItemsSource="{Binding PriorityItems}">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
-                                <TextBlock Text="{Binding DisplayName}" />
+                                <StackPanel Margin="0,2">
+                                    <TextBlock Text="{Binding DisplayName}" />
+                                    <TextBlock Text="{Binding Description}" FontSize="11"
+                                               Classes="muted" TextWrapping="Wrap" />
+                                </StackPanel>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
@@ -93,57 +97,69 @@
                        TextWrapping="Wrap"/>
 
             <!-- 判定源①：到阈值自动提醒 -->
-            <fa:SettingsExpander Header="自动提醒"
+            <fa:SettingsExpander Header="判定源①：自动提醒"
                                  Description="平均分贝超过阈值时立即发出提醒。"
                                  IsExpanded="{Binding GlobalSettings.AutoSourceEnabled, Mode=OneWay}">
                 <fa:SettingsExpander.Footer>
                     <ToggleSwitch IsChecked="{Binding GlobalSettings.AutoSourceEnabled, Mode=TwoWay}" />
                 </fa:SettingsExpander.Footer>
-                <fa:SettingsExpanderItem Content="阈值">
-                    <ci:Field Suffix="dB">
+                <fa:SettingsExpanderItem Content="阈值"
+                                         Description="窗口平均分贝严格大于该值时视为超阈值。">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
                         <Slider Width="220" Minimum="0" Maximum="150" TickFrequency="1"
                                 Value="{Binding GlobalSettings.AutoSourceThreshold, Mode=TwoWay}" />
-                    </ci:Field>
+                        <TextBlock VerticalAlignment="Center" Width="76"
+                                   Text="{Binding GlobalSettings.AutoSourceThreshold, StringFormat='{}{0:F1} dB'}" />
+                    </StackPanel>
                 </fa:SettingsExpanderItem>
                 <fa:SettingsExpanderItem Content="冷却时间"
-                                         Description="两次提醒之间的最小间隔。">
-                    <ci:Field Suffix="秒">
+                                         Description="两次提醒之间的最小间隔；冷却期内状态点为红色但不重复提醒。">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
                         <Slider Width="220" Minimum="0" Maximum="1800" TickFrequency="30"
                                 IsSnapToTickEnabled="True"
                                 Value="{Binding GlobalSettings.AutoSourceCooldownSeconds, Mode=TwoWay}" />
-                    </ci:Field>
+                        <TextBlock VerticalAlignment="Center" Width="76"
+                                   Text="{Binding GlobalSettings.AutoSourceCooldownSeconds, StringFormat='{}{0:F0} 秒'}" />
+                    </StackPanel>
                 </fa:SettingsExpanderItem>
             </fa:SettingsExpander>
 
             <!-- 判定源②：到阈值开筛选窗口，窗口内命中热键才提醒 -->
-            <fa:SettingsExpander Header="热键确认"
+            <fa:SettingsExpander Header="判定源②：热键确认"
                                  Description="平均分贝超过阈值时开启筛选窗口，窗口内按下指定热键才提醒；窗口内没有按键则不提醒。"
                                  IsEnabled="{Binding KeyboardCaptureAvailable}"
                                  IsExpanded="{Binding GlobalSettings.HotkeySourceEnabled, Mode=OneWay}">
                 <fa:SettingsExpander.Footer>
                     <ToggleSwitch IsChecked="{Binding GlobalSettings.HotkeySourceEnabled, Mode=TwoWay}" />
                 </fa:SettingsExpander.Footer>
-                <fa:SettingsExpanderItem Content="阈值">
-                    <ci:Field Suffix="dB">
+                <fa:SettingsExpanderItem Content="阈值"
+                                         Description="窗口平均分贝严格大于该值时开启筛选窗口。">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
                         <Slider Width="220" Minimum="0" Maximum="150" TickFrequency="1"
                                 Value="{Binding GlobalSettings.HotkeySourceThreshold, Mode=TwoWay}" />
-                    </ci:Field>
+                        <TextBlock VerticalAlignment="Center" Width="76"
+                                   Text="{Binding GlobalSettings.HotkeySourceThreshold, StringFormat='{}{0:F1} dB'}" />
+                    </StackPanel>
                 </fa:SettingsExpanderItem>
                 <fa:SettingsExpanderItem Content="冷却时间"
-                                         Description="两次提醒之间的最小间隔。">
-                    <ci:Field Suffix="秒">
+                                         Description="两次提醒之间的最小间隔；冷却期内不再开启筛选窗口，状态点保持红色。">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
                         <Slider Width="220" Minimum="0" Maximum="1800" TickFrequency="30"
                                 IsSnapToTickEnabled="True"
                                 Value="{Binding GlobalSettings.HotkeySourceCooldownSeconds, Mode=TwoWay}" />
-                    </ci:Field>
+                        <TextBlock VerticalAlignment="Center" Width="76"
+                                   Text="{Binding GlobalSettings.HotkeySourceCooldownSeconds, StringFormat='{}{0:F0} 秒'}" />
+                    </StackPanel>
                 </fa:SettingsExpanderItem>
                 <fa:SettingsExpanderItem Content="筛选窗口时长"
                                          Description="窗口开启后等待按键确认的时间，超时则关闭窗口且不提醒。">
-                    <ci:Field Suffix="秒">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
                         <Slider Width="220" Minimum="1" Maximum="60" TickFrequency="1"
                                 IsSnapToTickEnabled="True"
                                 Value="{Binding GlobalSettings.HotkeyWindowSeconds, Mode=TwoWay}" />
-                    </ci:Field>
+                        <TextBlock VerticalAlignment="Center" Width="76"
+                                   Text="{Binding GlobalSettings.HotkeyWindowSeconds, StringFormat='{}{0:F0} 秒'}" />
+                    </StackPanel>
                 </fa:SettingsExpanderItem>
                 <fa:SettingsExpanderItem Content="确认热键"
                                          Description="窗口内按下该组合键即确认提醒。键名与 KeyboardCapture 一致，如 F5、Space、A。">
@@ -152,7 +168,8 @@
                                  Text="{Binding GlobalSettings.HotkeyKey, Mode=TwoWay}" />
                     </ci:Field>
                 </fa:SettingsExpanderItem>
-                <fa:SettingsExpanderItem Content="修饰键">
+                <fa:SettingsExpanderItem Content="修饰键"
+                                         Description="需要与键名同时按下的组合键；全部不勾选表示单键。">
                     <StackPanel Orientation="Horizontal" Spacing="12">
                         <CheckBox Content="Ctrl" IsChecked="{Binding GlobalSettings.HotkeyCtrl, Mode=TwoWay}" />
                         <CheckBox Content="Alt" IsChecked="{Binding GlobalSettings.HotkeyAlt, Mode=TwoWay}" />

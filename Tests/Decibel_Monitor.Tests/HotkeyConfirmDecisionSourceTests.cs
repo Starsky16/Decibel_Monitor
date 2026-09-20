@@ -203,6 +203,34 @@ public class HotkeyConfirmDecisionSourceTests
         Assert.False(source.IsTriggerActive);
     }
 
+    [Fact]
+    public void IsCoolingDown_Should_BeTrue_AfterAlert_UntilCooldownElapsed()
+    {
+        var source = CreateSource(cooldown: TimeSpan.FromMinutes(5));
+        Assert.False(source.IsCoolingDown(Now));
+
+        source.Decide(Context(120.0), Now);
+        Assert.False(source.IsCoolingDown(Now));
+
+        source.HandleKeyPress(KeyName, HotkeyModifiers.None, Now);
+        source.Decide(Context(120.0), Now);
+
+        Assert.True(source.IsCoolingDown(Now.AddMinutes(1)));
+        Assert.False(source.IsCoolingDown(Now.AddMinutes(5)));
+    }
+
+    [Fact]
+    public void IsCoolingDown_Should_BeFalse_WhenWindowClosedWithoutConfirming()
+    {
+        // 窗口超时未确认不进入冷却，状态点不应因超时保持点亮
+        var source = CreateSource(cooldown: TimeSpan.FromMinutes(5));
+        source.Decide(Context(120.0), Now);
+
+        source.Decide(Context(120.0), Now.Add(Window).AddSeconds(1));
+
+        Assert.False(source.IsCoolingDown(Now.Add(Window).AddSeconds(1)));
+    }
+
     // ---- 热键匹配 ----
 
     [Fact]
