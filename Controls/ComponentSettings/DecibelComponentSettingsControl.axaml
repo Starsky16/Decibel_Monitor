@@ -12,7 +12,8 @@
 
     <!-- 本面板（"小组件显示侧"）仅包含该组件的显示偏好。
          测量/校准（参考 dB、放大倍数）为全局设置，请到 设置 → Decibel_Monitor 页 校准；
-         提醒相关设置请到 设置 → 通知 → 分贝提醒。 -->
+         提醒判定（何时提醒）在 设置 → Decibel_Monitor 页 → 提醒判定，
+         提醒正文与语音在 设置 → 通知 → 分贝提醒。 -->
     <ScrollViewer
         DataContext="{Binding RelativeSource={RelativeSource Mode=FindAncestor, AncestorType={x:Type local:DecibelComponentSettingsControl}}}">
         <StackPanel Classes="settings-container animated-intro" Margin="12" Spacing="8">
