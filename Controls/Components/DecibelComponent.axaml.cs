@@ -22,21 +22,45 @@ public partial class DecibelComponent : ComponentBase<DecibelComponentSettings>
     public static readonly StyledProperty<string> CurrentDecibelValueProperty =
         AvaloniaProperty.Register<DecibelComponent, string>(nameof(CurrentDecibelValue), "N/A");
 
-    /// <summary>是否显示提醒状态点（任一判定源已启用且组件设置未关闭时显示）。</summary>
+    /// <summary>是否显示提醒状态点（组件设置未关闭且存在有效采样时显示）。</summary>
     public static readonly StyledProperty<bool> IsIndicatorVisibleProperty =
         AvaloniaProperty.Register<DecibelComponent, bool>(nameof(IsIndicatorVisible));
 
-    /// <summary>提醒状态点是否为红色：红=提醒触发中（含冷却期），绿=正常。</summary>
-    public static readonly StyledProperty<bool> IsIndicatorAlertProperty =
-        AvaloniaProperty.Register<DecibelComponent, bool>(nameof(IsIndicatorAlert));
+    /// <summary>常态是否显示绿圆。</summary>
+    public static readonly StyledProperty<bool> IsCircleVisibleProperty =
+        AvaloniaProperty.Register<DecibelComponent, bool>(nameof(IsCircleVisible));
 
-    /// <summary>筛选窗口开启时状态点的闪烁半周期（毫秒）：红灯、绿灯各持续这么久。</summary>
-    private const int BlinkHalfPeriodMs = 400;
+    /// <summary>正在超阈值时是否显示红实心方。</summary>
+    public static readonly StyledProperty<bool> IsSquareFilledVisibleProperty =
+        AvaloniaProperty.Register<DecibelComponent, bool>(nameof(IsSquareFilledVisible));
+
+    /// <summary>提醒后的冷却期是否显示红空心方。</summary>
+    public static readonly StyledProperty<bool> IsSquareHollowVisibleProperty =
+        AvaloniaProperty.Register<DecibelComponent, bool>(nameof(IsSquareHollowVisible));
+
+    /// <summary>待热键确认时是否显示橙三角。</summary>
+    public static readonly StyledProperty<bool> IsTriangleVisibleProperty =
+        AvaloniaProperty.Register<DecibelComponent, bool>(nameof(IsTriangleVisible));
+
+    /// <summary>三角是否呼吸（筛选窗口剩余时间已进入收紧区间）。</summary>
+    public static readonly StyledProperty<bool> IsBreathingProperty =
+        AvaloniaProperty.Register<DecibelComponent, bool>(nameof(IsBreathing));
+
+    /// <summary>数字是否使用"判据成立"颜色（红）。</summary>
+    public static readonly StyledProperty<bool> IsValueAboveThresholdProperty =
+        AvaloniaProperty.Register<DecibelComponent, bool>(nameof(IsValueAboveThreshold));
+
+    /// <summary>数字是否使用"判据不成立"颜色（绿）。</summary>
+    public static readonly StyledProperty<bool> IsValueWithinThresholdProperty =
+        AvaloniaProperty.Register<DecibelComponent, bool>(nameof(IsValueWithinThreshold));
 
     private readonly DispatcherTimer _updateTimer;
     private readonly AlertRuntimeService? _runtimeService;
     private volatile bool _isActive;
     private volatile bool _isUpdating;
+
+    /// <summary>本实例是否已把视觉属性应用到控件上（首次附着时 Change 标志为假，需要强制应用一次）。</summary>
+    private bool _visualsApplied;
 
     /// <summary>
     /// 当前显示的分贝值文本（Avalonia 属性，绑定自动响应变化）。
@@ -48,7 +72,7 @@ public partial class DecibelComponent : ComponentBase<DecibelComponentSettings>
     }
 
     /// <summary>
-    /// 是否显示提醒状态点（组件设置关闭或没有启用任何判定源时为 false）。
+    /// 是否显示提醒状态点（组件设置关闭或没有有效采样时为 false）。
     /// </summary>
     public bool IsIndicatorVisible
     {
@@ -56,14 +80,53 @@ public partial class DecibelComponent : ComponentBase<DecibelComponentSettings>
         private set => SetValue(IsIndicatorVisibleProperty, value);
     }
 
-    /// <summary>
-    /// 提醒状态点是否为红色：红=提醒触发中（含冷却期），绿=正常；
-    /// 筛选窗口开启时在红绿之间交替，形成闪动。
-    /// </summary>
-    public bool IsIndicatorAlert
+    /// <summary>常态是否显示绿圆。</summary>
+    public bool IsCircleVisible
     {
-        get => GetValue(IsIndicatorAlertProperty);
-        private set => SetValue(IsIndicatorAlertProperty, value);
+        get => GetValue(IsCircleVisibleProperty);
+        private set => SetValue(IsCircleVisibleProperty, value);
+    }
+
+    /// <summary>正在超阈值时是否显示红实心方。</summary>
+    public bool IsSquareFilledVisible
+    {
+        get => GetValue(IsSquareFilledVisibleProperty);
+        private set => SetValue(IsSquareFilledVisibleProperty, value);
+    }
+
+    /// <summary>提醒后的冷却期是否显示红空心方。</summary>
+    public bool IsSquareHollowVisible
+    {
+        get => GetValue(IsSquareHollowVisibleProperty);
+        private set => SetValue(IsSquareHollowVisibleProperty, value);
+    }
+
+    /// <summary>待热键确认时是否显示橙三角。</summary>
+    public bool IsTriangleVisible
+    {
+        get => GetValue(IsTriangleVisibleProperty);
+        private set => SetValue(IsTriangleVisibleProperty, value);
+    }
+
+    /// <summary>三角是否呼吸（筛选窗口即将超时）。</summary>
+    public bool IsBreathing
+    {
+        get => GetValue(IsBreathingProperty);
+        private set => SetValue(IsBreathingProperty, value);
+    }
+
+    /// <summary>数字是否使用"判据成立"颜色（红）。</summary>
+    public bool IsValueAboveThreshold
+    {
+        get => GetValue(IsValueAboveThresholdProperty);
+        private set => SetValue(IsValueAboveThresholdProperty, value);
+    }
+
+    /// <summary>数字是否使用"判据不成立"颜色（绿）。</summary>
+    public bool IsValueWithinThreshold
+    {
+        get => GetValue(IsValueWithinThresholdProperty);
+        private set => SetValue(IsValueWithinThresholdProperty, value);
     }
 
     public DecibelComponent()
@@ -103,6 +166,9 @@ public partial class DecibelComponent : ComponentBase<DecibelComponentSettings>
     {
         base.OnDetachedFromVisualTree(e);
 
+        // 重新附着时状态未必发生变化（Change 标志为假），需要再次强制应用一次视觉属性
+        _visualsApplied = false;
+
         if (!_isActive) return;
         _isActive = false;
         _updateTimer.Tick -= UpdateTimer_Tick;
@@ -116,10 +182,8 @@ public partial class DecibelComponent : ComponentBase<DecibelComponentSettings>
         _isUpdating = true;
         try
         {
-            // 应用设置的更新频率（设置变化后下一拍即生效）；
-            // 筛选窗口开启时收紧到闪烁半周期，保证红绿交替看得见
+            // 应用设置的更新频率（设置变化后下一拍即生效）
             int intervalMs = Math.Clamp(Settings?.UpdateIntervalMs ?? 200, 100, 5000);
-            if (_runtimeService?.IndicatorState == IndicatorState.AwaitingHotkey) intervalMs = Math.Min(intervalMs, BlinkHalfPeriodMs);
             if (Math.Abs(_updateTimer.Interval.TotalMilliseconds - intervalMs) > 0.5)
             {
                 _updateTimer.Interval = TimeSpan.FromMilliseconds(intervalMs);
@@ -140,15 +204,25 @@ public partial class DecibelComponent : ComponentBase<DecibelComponentSettings>
                 ? (showPrefix ? $"分贝: {_runtimeService.CurrentDecibel:F1}" : $"{_runtimeService.CurrentDecibel:F1}")
                 : "N/A";
 
-            // 单一状态点：红=提醒触发中（超阈值/冷却期），绿=正常；
-            // 筛选窗口开启时红绿交替闪动，与静态状态区分开
-            IsIndicatorVisible = showIndicator && _runtimeService.IsAnySourceEnabled;
-            IsIndicatorAlert = _runtimeService.IndicatorState switch
-            {
-                IndicatorState.AwaitingHotkey => Environment.TickCount64 / BlinkHalfPeriodMs % 2 == 0,
-                IndicatorState.Alerting or IndicatorState.CoolingDown => true,
-                _ => false,
-            };
+            var state = _runtimeService.IndicatorState;
+
+            // 无采样或未启用任何判定源时（解析结果 NoData）不显示任何形状
+            IsIndicatorVisible = showIndicator && state != IndicatorState.NoData;
+
+            // 呼吸的起止由时间推进而非状态变化触发，不在 Change 标志内，必须每拍读取
+            IsBreathing = _runtimeService.IsIndicatorBreathing;
+
+            // 形状与数字颜色是"离散状态"，只在状态或判据变化时重设；
+            // 新实例首次附着时 Change 标志必为假，用 _visualsApplied 兜底强制应用一次
+            if (_visualsApplied && !_runtimeService.IndicatorStateChanged) return;
+
+            IsCircleVisible = state == IndicatorState.Normal;
+            IsSquareFilledVisible = state == IndicatorState.Alerting;
+            IsSquareHollowVisible = state == IndicatorState.CoolingDown;
+            IsTriangleVisible = state == IndicatorState.AwaitingHotkey;
+            IsValueAboveThreshold = _runtimeService.IndicatorValueState == IndicatorValueState.Above;
+            IsValueWithinThreshold = _runtimeService.IndicatorValueState == IndicatorValueState.Below;
+            _visualsApplied = true;
         }
         catch (Exception)
         {

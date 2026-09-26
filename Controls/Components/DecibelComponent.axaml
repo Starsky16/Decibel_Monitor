@@ -10,20 +10,64 @@
     <!-- 主布局容器，数据上下文绑定到当前组件实例，以便访问组件的属性和设置 -->
     <Grid VerticalAlignment="Center"
           DataContext="{Binding RelativeSource={RelativeSource Mode=FindAncestor, AncestorType={x:Type local:DecibelComponent}}}">
+        <Grid.Styles>
+            <!-- 数字前景色：判据成立=红、不成立=绿、无采样=不设（沿用宿主默认文字色）。
+                 使用宿主主题语义画刷而非固定色值，深浅主题下对比度由主题保证 -->
+            <Style Selector="TextBlock.value-alert">
+                <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCriticalBrush}"/>
+            </Style>
+            <Style Selector="TextBlock.value-normal">
+                <Setter Property="Foreground" Value="{DynamicResource SystemFillColorSuccessBrush}"/>
+            </Style>
+            <!-- 呼吸：仅筛选窗口即将超时时对三角的不透明度做同色脉动。
+                 不再在红绿之间交替，避免最紧急的状态有一半时间显示成"正常" -->
+            <Style Selector="Path.breathing">
+                <Style.Animations>
+                    <Animation Duration="0:0:1" IterationCount="Infinite">
+                        <KeyFrame Cue="0%">
+                            <Setter Property="Opacity" Value="1.0"/>
+                        </KeyFrame>
+                        <KeyFrame Cue="50%">
+                            <Setter Property="Opacity" Value="0.35"/>
+                        </KeyFrame>
+                        <KeyFrame Cue="100%">
+                            <Setter Property="Opacity" Value="1.0"/>
+                        </KeyFrame>
+                    </Animation>
+                </Style.Animations>
+            </Style>
+        </Grid.Styles>
         <StackPanel Orientation="Horizontal" Margin="0 2 0 2">
             <!-- 文本组件，用于显示当前的分贝值 -->
             <TextBlock Text="{Binding CurrentDecibelValue, Mode=OneWay}"
                        FontSize="16"
                        VerticalAlignment="Center"
-                       Margin="5,0,0,0"/>
-            <!-- 提醒状态点：绿=正常，红=提醒触发中（超阈值/冷却期），红绿闪动=筛选窗口开启待按键确认 -->
+                       Margin="5,0,0,0"
+                       Classes.value-alert="{Binding IsValueAboveThreshold, Mode=OneWay}"
+                       Classes.value-normal="{Binding IsValueWithinThreshold, Mode=OneWay}"/>
+            <!-- 提醒状态点：形状 + 填充 + 呼吸三个通道互斥显示，同一时刻最多一个形状；
+                 无采样 / 未启用任何判定源时不显示任何形状 -->
             <Panel IsVisible="{Binding IsIndicatorVisible, Mode=OneWay}"
                    VerticalAlignment="Center"
                    Margin="6,0,0,0">
-                <Ellipse Width="8" Height="8" Fill="#FF43A047"
-                         IsVisible="{Binding !IsIndicatorAlert, Mode=OneWay}"/>
-                <Ellipse Width="8" Height="8" Fill="#FFD32F2F"
-                         IsVisible="{Binding IsIndicatorAlert, Mode=OneWay}"/>
+                <!-- 常态：低不透明度绿圆 -->
+                <Ellipse Width="12" Height="12" Opacity="0.45"
+                         Fill="{DynamicResource SystemFillColorSuccessBrush}"
+                         IsVisible="{Binding IsCircleVisible, Mode=OneWay}"/>
+                <!-- 正在超阈值：红实心方 -->
+                <Rectangle Width="12" Height="12"
+                           Fill="{DynamicResource SystemFillColorCriticalBrush}"
+                           IsVisible="{Binding IsSquareFilledVisible, Mode=OneWay}"/>
+                <!-- 提醒后的冷却期：红空心方。形状表达"提醒已发生过"，数字颜色表达"现在是否还在吵"，
+                     因此冷却期恒定空心，不与"正在超阈值"的实心方混淆 -->
+                <Rectangle Width="12" Height="12" StrokeThickness="2" Fill="Transparent"
+                           Stroke="{DynamicResource SystemFillColorCriticalBrush}"
+                           IsVisible="{Binding IsSquareHollowVisible, Mode=OneWay}"/>
+                <!-- 待热键确认：橙实心三角（唯一需要用户动手的状态），窗口即将超时时呼吸 -->
+                <Path Data="M 6,0 L 12,12 L 0,12 Z"
+                      Fill="{DynamicResource SystemFillColorCautionBrush}"
+                      IsVisible="{Binding IsTriangleVisible, Mode=OneWay}"
+                      Classes.breathing="{Binding IsBreathing, Mode=OneWay}"/>
             </Panel>
         </StackPanel>
     </Grid>
