@@ -67,6 +67,12 @@ public sealed class HotkeyConfirmDecisionSource : IAlertDecisionSource
     /// <summary>当前筛选窗口是否开启（供组件显示提醒状态）。</summary>
     public bool IsWindowOpen { get; private set; }
 
+    /// <summary>
+    /// 筛选窗口的截止时间（UTC）。窗口未开启时为 <see cref="DateTime.MinValue"/>
+    /// （供运行时服务计算剩余时间与呼吸时机）。
+    /// </summary>
+    public DateTime WindowOpenUntilUtc => IsWindowOpen ? _windowOpenUntilUtc : DateTime.MinValue;
+
     /// <summary>当前是否处于"超过阈值"状态（供组件显示提醒状态）。</summary>
     public bool IsTriggerActive { get; private set; }
 

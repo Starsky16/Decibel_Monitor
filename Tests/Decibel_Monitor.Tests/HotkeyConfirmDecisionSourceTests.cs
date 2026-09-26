@@ -123,6 +123,21 @@ public class HotkeyConfirmDecisionSourceTests
     // ---- 窗口超时 ----
 
     [Fact]
+    public void WindowOpenUntilUtc_Should_ExposeDeadlineOnlyWhileWindowOpen()
+    {
+        // 供运行时服务计算窗口剩余时间与呼吸时机：窗口关闭后不得残留过期截止时间
+        var source = CreateSource();
+        Assert.Equal(DateTime.MinValue, source.WindowOpenUntilUtc);
+
+        source.Decide(Context(120.0), Now);
+        Assert.Equal(Now + Window, source.WindowOpenUntilUtc);
+
+        source.Decide(Context(120.0), Now + Window + TimeSpan.FromMilliseconds(1));
+        Assert.False(source.IsWindowOpen);
+        Assert.Equal(DateTime.MinValue, source.WindowOpenUntilUtc);
+    }
+
+    [Fact]
     public void Decide_Should_CloseWindowWithoutAlerting_WhenWindowTimedOut()
     {
         var source = CreateSource();
