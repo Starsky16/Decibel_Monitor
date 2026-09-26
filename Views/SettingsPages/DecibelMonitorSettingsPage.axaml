@@ -113,7 +113,7 @@
                     </StackPanel>
                 </fa:SettingsExpanderItem>
                 <fa:SettingsExpanderItem Content="冷却时间"
-                                         Description="两次提醒之间的最小间隔；冷却期内状态点为红色但不重复提醒。">
+                                         Description="两次提醒之间的最小间隔；冷却期内状态点为红色空心方（表示提醒已发生）但不重复提醒。">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Slider Width="220" Minimum="0" Maximum="1800" TickFrequency="30"
                                 IsSnapToTickEnabled="True"
@@ -142,7 +142,7 @@
                     </StackPanel>
                 </fa:SettingsExpanderItem>
                 <fa:SettingsExpanderItem Content="冷却时间"
-                                         Description="两次提醒之间的最小间隔；冷却期内不再开启筛选窗口，状态点保持红色。">
+                                         Description="两次提醒之间的最小间隔；冷却期内不再开启筛选窗口，状态点保持红色空心方。">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Slider Width="220" Minimum="0" Maximum="1800" TickFrequency="30"
                                 IsSnapToTickEnabled="True"

@@ -204,13 +204,21 @@ public sealed class AlertRuntimeService : IHostedService, IDisposable
         var windowUntilUtc = _hotkeySource.WindowOpenUntilUtc;
         var remaining = windowOpen && windowUntilUtc > nowUtc ? windowUntilUtc - nowUtc : TimeSpan.Zero;
 
+        var autoCoolingDown = _autoSource.IsCoolingDown(nowUtc);
+        var hotkeyCoolingDown = _hotkeySource.IsCoolingDown(nowUtc);
+
         var snapshot = _indicatorResolver.Update(new IndicatorInputs
         {
             HasSample = HasSample,
             AnySourceEnabled = IsAnySourceEnabled,
             AnyWindowOpen = windowOpen,
-            AnyTriggerActive = _autoSource.IsTriggerActive || _hotkeySource.IsTriggerActive,
-            AnyCoolingDown = _autoSource.IsCoolingDown(nowUtc) || _hotkeySource.IsCoolingDown(nowUtc),
+            // "正在超阈值"只在判定源未处于冷却期时成立：提醒一旦发出即进入冷却，
+            // 此后由冷却态表达形状（空心方，表示"提醒已发生过"），
+            // "现在是否还在吵"交给数字颜色（冷却期改用 1 秒短窗口平均）。
+            AnyTriggerActive =
+                (_autoSource.IsTriggerActive && !autoCoolingDown) ||
+                (_hotkeySource.IsTriggerActive && !hotkeyCoolingDown),
+            AnyCoolingDown = autoCoolingDown || hotkeyCoolingDown,
             AverageDecibel = average,
             ShortWindowAverageDecibel = shortAverage,
             Threshold = GetIndicatorThreshold(),

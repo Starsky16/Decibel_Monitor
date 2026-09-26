@@ -49,6 +49,8 @@ public class IndicatorStateResolverTests
     [Fact]
     public void ResolveCandidate_Should_ReturnAlerting_When_TriggerActiveWithoutWindow()
     {
+        // 超阈值优先于冷却：A 源正在触发（未冷却）时，即使 B 源处于冷却，也不能把 A 的实心方盖成空心方。
+        // 运行时已把"处于冷却期的源"从 AnyTriggerActive 中排除，因此这里的组合只可能来自不同源。
         var state = IndicatorStateResolver.ResolveCandidate(Inputs(triggerActive: true, coolingDown: true));
 
         Assert.Equal(IndicatorState.Alerting, state);

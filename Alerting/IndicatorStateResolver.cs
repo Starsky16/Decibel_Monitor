@@ -13,7 +13,10 @@ public enum IndicatorState
     /// <summary>有采样且各判定条件均不成立。</summary>
     Normal,
 
-    /// <summary>任一判定源当前处于"超过阈值"状态（提醒已由仲裁模块发出）。</summary>
+    /// <summary>
+    /// 任一判定源当前处于"超过阈值且未冷却"状态（提醒正由仲裁模块发出）。
+    /// 提醒与冷却在同一拍写入，因此该态实际只在判定源冷却时间为 0 时可见。
+    /// </summary>
     Alerting,
 
     /// <summary>任一判定源处于提醒后的冷却期（提醒已经发生过）。</summary>
@@ -56,7 +59,10 @@ public readonly record struct IndicatorInputs
     /// <summary>任一判定源的热键筛选窗口是否开启。</summary>
     public bool AnyWindowOpen { get; init; }
 
-    /// <summary>任一判定源是否处于"超过阈值"状态。</summary>
+    /// <summary>
+    /// 任一判定源是否处于"超过阈值<strong>且未处于冷却期</strong>"状态（判定条件成立、提醒即将或正在发出）。
+    /// 已进入冷却的源不算数——否则低阈值用法下冷却期内会一直显示"正在超阈值"，"刚提醒过"这一事实会被盖掉。
+    /// </summary>
     public bool AnyTriggerActive { get; init; }
 
     /// <summary>任一判定源是否处于提醒后的冷却期。</summary>
@@ -104,7 +110,9 @@ public readonly record struct IndicatorSnapshot(
 /// 设计约束（纯逻辑，不依赖 Avalonia / NAudio / Windows，可在任意平台单测）：
 /// <list type="bullet">
 /// <item><description><strong>合并规则按"是否需要用户动手"排序</strong>：窗口 &gt; 超阈值 &gt; 冷却 &gt; 正常 &gt; 无数据。
-/// 窗口必须压制冷却——两个源同时启用时自动源的冷却可达 1800 秒，若按严重度排序会把"该按键"盖掉。</description></item>
+/// 窗口必须压制冷却——两个源同时启用时自动源的冷却可达 1800 秒，若按严重度排序会把"该按键"盖掉。
+/// <see cref="IndicatorInputs.AnyTriggerActive"/> 的输入已排除处于冷却期的源，因此<strong>冷却期的形状恒为空心方</strong>：
+/// 超阈值当拍即发出提醒并进入冷却，此后形状只表达"提醒已发生过"，"现在是否还在吵"交给数字颜色。</description></item>
 /// <item><description><strong>状态不携带源身份</strong>：单点无法表达 2 源 × 4 态，不做并排图标。</description></item>
 /// <item><description><strong>阈值迟滞（施密特触发）</strong>只作用于数字颜色判据，用于消除判据在阈值附近的抖动引起的颜色闪变；
 /// 判定源自身的触发逻辑保持不变，因此不影响提醒行为。</description></item>
@@ -157,7 +165,8 @@ public sealed class IndicatorStateResolver
     /// </summary>
     /// <remarks>
     /// 顺序：① 任一源窗口开启 → <see cref="IndicatorState.AwaitingHotkey"/>；
-    /// ② 任一源超阈值 → <see cref="IndicatorState.Alerting"/>；
+    /// ② 任一源超阈值<strong>且未冷却</strong> → <see cref="IndicatorState.Alerting"/>
+    /// （判定源超阈值当拍即由仲裁模块发出提醒并写入冷却，因此该态只在冷却时间为 0 时可见）；
     /// ③ 任一源冷却中 → <see cref="IndicatorState.CoolingDown"/>；
     /// ④ 有采样且至少启用一个判定源 → <see cref="IndicatorState.Normal"/>；
     /// ⑤ 否则 → <see cref="IndicatorState.NoData"/>（无采样或未启用任何判定源时都不显示形状）。
