@@ -126,7 +126,7 @@
 
             <!-- 判定源②：到阈值开筛选窗口，窗口内命中热键才提醒 -->
             <fa:SettingsExpander Header="判定源②：热键确认"
-                                 Description="平均分贝超过阈值时开启筛选窗口，窗口内按下指定热键才提醒；窗口内没有按键则不提醒。窗口开启期间组件上的状态点会红绿闪动。"
+                                 Description="平均分贝超过阈值时开启筛选窗口，窗口内按下指定热键才提醒；窗口内没有按键则不提醒。窗口开启期间组件上的状态点为橙色三角。"
                                  IsEnabled="{Binding KeyboardCaptureAvailable}"
                                  IsExpanded="{Binding GlobalSettings.HotkeySourceEnabled, Mode=OneWay}">
                 <fa:SettingsExpander.Footer>
@@ -152,7 +152,7 @@
                     </StackPanel>
                 </fa:SettingsExpanderItem>
                 <fa:SettingsExpanderItem Content="筛选窗口时长"
-                                         Description="窗口开启后等待按键确认的时间，超时则关闭窗口且不提醒；窗口开启期间组件状态点红绿闪动。">
+                                         Description="窗口开启后等待按键确认的时间，超时则关闭窗口且不提醒；窗口开启期间组件状态点为橙色三角，窗口即将超时时三角会呼吸提示。">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Slider Width="220" Minimum="1" Maximum="60" TickFrequency="1"
                                 IsSnapToTickEnabled="True"
