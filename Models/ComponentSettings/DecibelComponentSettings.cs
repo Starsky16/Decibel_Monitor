@@ -12,7 +12,9 @@ public partial class DecibelComponentSettings : ObservableObject
 {
     /// <summary>
     /// 是否在组件上显示提醒状态点（默认 true）。
-    /// 绿点=正常；红点=提醒触发中（超过阈值、筛选窗口开启或处于冷却期）。
+    /// 形状表达状态：绿圆=正常；红实心方=正在超阈值；红空心方=提醒后的冷却期；
+    /// 橙色三角=筛选窗口开启、等待热键确认（窗口即将超时时三角呼吸）。
+    /// 无采样或未启用任何判定源时不显示形状。
     /// 关闭后仍会正常发出系统通知，只是不在组件上显示状态点。
     /// </summary>
     [ObservableProperty] private bool _showStatusIndicator = true;
