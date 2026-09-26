@@ -61,6 +61,22 @@ public partial class DecibelMonitorGlobalSettings : ObservableObject
         Alerting.HotkeyConfirmDecisionSource.SourceId,
     };
 
+    // ── 时段闸门（对全部判定源生效）────────────────────────────────────
+
+    /// <summary>
+    /// 课间休息期间是否抑制提醒，默认 true。
+    /// 抑制时<strong>只停止发出通知</strong>，状态点仍照常显示当前是否超阈值；
+    /// 且抑制期间不推进判定源，因此不会占用冷却时间（课间误报不会影响上课时的提醒）。
+    /// 课表未启用或未加载时本项不生效。
+    /// </summary>
+    [ObservableProperty] private bool _suppressAlertDuringBreak = true;
+
+    /// <summary>
+    /// 每节课开始后的保护时长（分钟），默认 3，取值按 0..10 夹取（消费端处理）；0 表示关闭该保护。
+    /// 保护期内抑制提醒，用于避开上课起立、问好等固定声音造成的误报；同样不占用冷却时间。
+    /// </summary>
+    [ObservableProperty] private int _classStartProtectionMinutes = 3;
+
     // ── 判定源①：到阈值自动提醒 ─────────────────────────────────────────
 
     /// <summary>是否启用"自动提醒"判定源（超过阈值立即提醒）。</summary>
