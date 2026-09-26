@@ -96,6 +96,27 @@
                        Text="同一次判定中多个判定源同时触发时，靠前者被记为触发提醒的判定源。"
                        TextWrapping="Wrap"/>
 
+            <!-- 时段闸门：对两个判定源都生效 -->
+            <fa:SettingsExpander Header="时段闸门"
+                                 IsExpanded="True"
+                                 Description="按课表时段抑制提醒：课间休息与每节课开头若干分钟内不发出通知，避免课间交谈、上课起立等声音被当成吵闹；抑制期间不占用判定源的冷却时间，状态点仍照常显示当前是否超阈值。课表未启用或未加载时本组设置不生效。">
+                <fa:SettingsExpanderItem Content="课间期间不提醒"
+                                         Description="课间休息时不再发出通知；组件上的状态点仍照常显示。">
+                    <fa:SettingsExpanderItem.Footer>
+                        <ToggleSwitch IsChecked="{Binding GlobalSettings.SuppressAlertDuringBreak, Mode=TwoWay}" />
+                    </fa:SettingsExpanderItem.Footer>
+                </fa:SettingsExpanderItem>
+                <fa:SettingsExpanderItem Content="上课初期保护时长"
+                                         Description="每节课开始后的这段时间内不提醒，用于避开上课起立、问好等固定声音；设为 0 表示关闭该保护。">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Slider Width="220" Minimum="0" Maximum="10" TickFrequency="1" IsSnapToTickEnabled="True"
+                                Value="{Binding GlobalSettings.ClassStartProtectionMinutes, Mode=TwoWay}" />
+                        <TextBlock VerticalAlignment="Center" Width="76"
+                                   Text="{Binding GlobalSettings.ClassStartProtectionMinutes, StringFormat='{}{0:F0} 分钟'}" />
+                    </StackPanel>
+                </fa:SettingsExpanderItem>
+            </fa:SettingsExpander>
+
             <!-- 判定源①：到阈值自动提醒 -->
             <fa:SettingsExpander Header="判定源①：自动提醒"
                                  Description="平均分贝超过阈值时立即发出提醒。"

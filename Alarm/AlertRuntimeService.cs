@@ -4,6 +4,9 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Threading;
+using ClassIsland.Core.Abstractions.Services;
+using ClassIsland.Shared;
+using ClassIsland.Shared.Enums;
 using Decibel_Monitor.Alerting;
 using Decibel_Monitor.Measurement;
 using Decibel_Monitor.Models;
@@ -26,6 +29,8 @@ namespace Decibel_Monitor.Alarm;
 /// <strong>不新增通知/语音开关</strong>。</description></item>
 /// <item><description>提醒状态点由 <see cref="IndicatorStateResolver"/> 解析：本服务只负责压平各判定源状态、
 /// 维护判定用的平均窗口与冷却期判据所用的 1 秒短窗口，状态含义与滞回规则全部归解析器（纯逻辑、可单测）。</description></item>
+/// <item><description><strong>时段闸门</strong>：课间休息与每节课开头若干分钟内不推进判定源（<see cref="ScheduleGate"/>，
+/// 依赖宿主课表状态）。这些时段的误报既不发出通知、也不占用冷却；状态点仍照常显示当前是否超阈值。</description></item>
 /// </list>
 /// </remarks>
 public sealed class AlertRuntimeService : IHostedService, IDisposable
@@ -50,10 +55,12 @@ public sealed class AlertRuntimeService : IHostedService, IDisposable
     private readonly List<float> _window = new();
     private readonly Queue<(DateTime TimestampUtc, float Value)> _shortWindow = new();
     private readonly IndicatorStateResolver _indicatorResolver = new();
+    private readonly ScheduleGate _scheduleGate = new();
     private readonly DispatcherTimer _timer;
     private DateTime _pauseUntilUtc = DateTime.MinValue;
     private string[]? _appliedPriorityOrder;
     private string? _lastDeviceDescription;
+    private ILessonsService? _lessonsService;
     private bool _disposed;
 
     /// <summary>最新一次采样的分贝映射值（显示刻度 0..150）。</summary>
@@ -153,7 +160,7 @@ public sealed class AlertRuntimeService : IHostedService, IDisposable
             if (deviceDescription is null)
             {
                 HasSample = false;
-                UpdateIndicator(nowUtc, average: 0.0, shortAverage: 0.0);
+                UpdateIndicator(nowUtc, average: 0.0, shortAverage: 0.0, scheduleGateSuppressed: false);
                 return;
             }
 
@@ -174,10 +181,19 @@ public sealed class AlertRuntimeService : IHostedService, IDisposable
             _shortWindow.Enqueue((nowUtc, (float)mapped));
             var shortAverage = GetShortWindowAverage(nowUtc, mapped);
 
-            var decision = _coordinator.Decide(new AlertContext(mapped, average), nowUtc);
+            // 时段闸门：课间与上课初期抑制提醒。闸门生效时必须跳过 Decide 调用——
+            // Decide 一旦被调用就会写入冷却时间，课间的一次误报会吃掉整段冷却，
+            // 导致进入上课后该提醒而不提醒（比不提醒更严重）。
+            var scheduleGateSuppressed = EvaluateScheduleGate(nowUtc);
+
+            var decision = default(CoordinatorDecision);
+            if (!scheduleGateSuppressed)
+            {
+                decision = _coordinator.Decide(new AlertContext(mapped, average), nowUtc);
+            }
 
             // 提醒状态点：由纯逻辑解析器把各判定源状态合并为单一枚举（取"是否需要用户动手"最高者）
-            UpdateIndicator(nowUtc, average, shortAverage);
+            UpdateIndicator(nowUtc, average, shortAverage, scheduleGateSuppressed);
 
             if (!decision.ShouldAlert) return;
 
@@ -198,30 +214,55 @@ public sealed class AlertRuntimeService : IHostedService, IDisposable
     /// <param name="nowUtc">当前时间（UTC）。</param>
     /// <param name="average">判定用的滑动窗口平均分贝。</param>
     /// <param name="shortAverage">冷却期数字判据所用的 1 秒短窗口平均分贝。</param>
-    private void UpdateIndicator(DateTime nowUtc, double average, double shortAverage)
+    /// <param name="scheduleGateSuppressed">本拍是否被时段闸门抑制（抑制时判定源未被推进，其状态不可用于显示）。</param>
+    private void UpdateIndicator(DateTime nowUtc, double average, double shortAverage, bool scheduleGateSuppressed)
     {
-        var windowOpen = _hotkeySource.IsWindowOpen;
-        var windowUntilUtc = _hotkeySource.WindowOpenUntilUtc;
-        var remaining = windowOpen && windowUntilUtc > nowUtc ? windowUntilUtc - nowUtc : TimeSpan.Zero;
+        var threshold = GetIndicatorThreshold();
 
-        var autoCoolingDown = _autoSource.IsCoolingDown(nowUtc);
-        var hotkeyCoolingDown = _hotkeySource.IsCoolingDown(nowUtc);
+        bool windowOpen;
+        bool triggerActive;
+        bool coolingDown;
+        TimeSpan remaining;
+
+        if (scheduleGateSuppressed)
+        {
+            // 闸门生效期间判定源本拍未被推进，其内部状态（超阈值 / 冷却 / 筛选窗口）停留在闸门开始前的旧值，
+            // 因此不参与显示。状态点改由"当前窗口平均是否超阈值"直接驱动，
+            // 只回答"现在吵不吵"——与"课间只停通知、照常显示噪音"的约定一致。
+            windowOpen = false;
+            triggerActive = IsAnySourceEnabled && average > threshold;
+            coolingDown = false;
+            remaining = TimeSpan.Zero;
+        }
+        else
+        {
+            windowOpen = _hotkeySource.IsWindowOpen;
+            var autoCoolingDown = _autoSource.IsCoolingDown(nowUtc);
+            var hotkeyCoolingDown = _hotkeySource.IsCoolingDown(nowUtc);
+
+            remaining = windowOpen && _hotkeySource.WindowOpenUntilUtc > nowUtc
+                ? _hotkeySource.WindowOpenUntilUtc - nowUtc
+                : TimeSpan.Zero;
+
+            // "正在超阈值"只在判定源未处于冷却期时成立：提醒一旦发出即进入冷却，
+            // 此后由冷却态表达形状（空心方，表示"提醒已发生过"），
+            // "现在是否还在吵"交给数字颜色（冷却期改用 1 秒短窗口平均）。
+            triggerActive =
+                (_autoSource.IsTriggerActive && !autoCoolingDown) ||
+                (_hotkeySource.IsTriggerActive && !hotkeyCoolingDown);
+            coolingDown = autoCoolingDown || hotkeyCoolingDown;
+        }
 
         var snapshot = _indicatorResolver.Update(new IndicatorInputs
         {
             HasSample = HasSample,
             AnySourceEnabled = IsAnySourceEnabled,
             AnyWindowOpen = windowOpen,
-            // "正在超阈值"只在判定源未处于冷却期时成立：提醒一旦发出即进入冷却，
-            // 此后由冷却态表达形状（空心方，表示"提醒已发生过"），
-            // "现在是否还在吵"交给数字颜色（冷却期改用 1 秒短窗口平均）。
-            AnyTriggerActive =
-                (_autoSource.IsTriggerActive && !autoCoolingDown) ||
-                (_hotkeySource.IsTriggerActive && !hotkeyCoolingDown),
-            AnyCoolingDown = autoCoolingDown || hotkeyCoolingDown,
+            AnyTriggerActive = triggerActive,
+            AnyCoolingDown = coolingDown,
             AverageDecibel = average,
             ShortWindowAverageDecibel = shortAverage,
-            Threshold = GetIndicatorThreshold(),
+            Threshold = threshold,
             HotkeyWindowRemaining = remaining,
             HotkeyWindowTimeout = _hotkeySource.WindowTimeout,
         }, nowUtc);
@@ -231,6 +272,36 @@ public sealed class AlertRuntimeService : IHostedService, IDisposable
         IsIndicatorBreathing = snapshot.IsBreathing;
         IndicatorStateChanged = snapshot.Changed;
     }
+
+    /// <summary>
+    /// 推进时段闸门，返回本拍是否应抑制提醒。
+    /// </summary>
+    /// <remarks>
+    /// 宿主课程服务不可用时按"不抑制"处理，行为回到未接入闸门之前；课表未启用或未加载时由闸门内部旁路。
+    /// 服务惰性解析并缓存（宿主服务在本插件加载时通常已就绪，解析失败则下一拍重试）。
+    /// </remarks>
+    private bool EvaluateScheduleGate(DateTime nowUtc)
+    {
+        var lessons = _lessonsService ??= IAppHost.TryGetService<ILessonsService>();
+        if (lessons is null) return false;
+
+        var settings = _settingsService?.Settings;
+        return _scheduleGate.Update(
+            ToSchedulePhase(lessons.CurrentState),
+            lessons.IsClassPlanEnabled,
+            lessons.IsClassPlanLoaded,
+            settings?.SuppressAlertDuringBreak ?? true,
+            settings?.ClassStartProtectionMinutes ?? 3,
+            nowUtc);
+    }
+
+    /// <summary>把宿主的 <see cref="TimeState"/> 映射为闸门关心的时段类别（准备上课、放学等一律不抑制）。</summary>
+    private static SchedulePhase ToSchedulePhase(TimeState state) => state switch
+    {
+        TimeState.OnClass => SchedulePhase.OnClass,
+        TimeState.Breaking => SchedulePhase.Breaking,
+        _ => SchedulePhase.Other,
+    };
 
     /// <summary>
     /// 数字颜色判据的阈值：取已启用判定源中的最小阈值。

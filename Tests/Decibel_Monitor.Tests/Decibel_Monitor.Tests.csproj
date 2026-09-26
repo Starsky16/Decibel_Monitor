@@ -28,6 +28,7 @@
     <Compile Include="..\..\Alerting\HotkeyConfirmDecisionSource.cs" Link="Alerting\HotkeyConfirmDecisionSource.cs" />
     <Compile Include="..\..\Alerting\AlertDecisionCoordinator.cs" Link="Alerting\AlertDecisionCoordinator.cs" />
     <Compile Include="..\..\Alerting\IndicatorStateResolver.cs" Link="Alerting\IndicatorStateResolver.cs" />
+    <Compile Include="..\..\Alerting\ScheduleGate.cs" Link="Alerting\ScheduleGate.cs" />
     <Compile Include="..\..\Measurement\PeakSample.cs" Link="Measurement\PeakSample.cs" />
   </ItemGroup>
 
