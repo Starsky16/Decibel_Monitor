@@ -24,6 +24,8 @@ namespace Decibel_Monitor.Alarm;
 /// <item><description>通知的唯一出口是仲裁模块的 <see cref="AlertDecisionCoordinator.NotifyRequested"/> 事件；
 /// 本服务把它接到现有 <see cref="DecibelNotificationProvider"/>，强调通知与语音由宿主通知系统负责，
 /// <strong>不新增通知/语音开关</strong>。</description></item>
+/// <item><description>提醒状态点由 <see cref="IndicatorStateResolver"/> 解析：本服务只负责压平各判定源状态、
+/// 维护判定用的平均窗口与冷却期判据所用的 1 秒短窗口，状态含义与滞回规则全部归解析器（纯逻辑、可单测）。</description></item>
 /// </list>
 /// </remarks>
 public sealed class AlertRuntimeService : IHostedService, IDisposable
@@ -37,34 +39,43 @@ public sealed class AlertRuntimeService : IHostedService, IDisposable
     /// <summary>平均窗口允许的样本数上限（防止窗口时长配置过大时无界占用内存）。</summary>
     private const int MaxWindowSamples = 2000;
 
+    /// <summary>冷却期数字判据所用的短窗口时长（固定 1 秒，与判定用的平均窗口相互独立）。</summary>
+    private static readonly TimeSpan ShortWindowDuration = TimeSpan.FromSeconds(1);
+
     private readonly AudioPeakMeter _audioPeakMeter;
     private readonly DecibelMonitorSettingsService? _settingsService;
     private readonly AlertDecisionCoordinator _coordinator;
     private readonly AutoThresholdDecisionSource _autoSource;
     private readonly HotkeyConfirmDecisionSource _hotkeySource;
     private readonly List<float> _window = new();
+    private readonly Queue<(DateTime TimestampUtc, float Value)> _shortWindow = new();
+    private readonly IndicatorStateResolver _indicatorResolver = new();
     private readonly DispatcherTimer _timer;
     private DateTime _pauseUntilUtc = DateTime.MinValue;
     private string[]? _appliedPriorityOrder;
+    private string? _lastDeviceDescription;
     private bool _disposed;
 
     /// <summary>最新一次采样的分贝映射值（显示刻度 0..150）。</summary>
     public double CurrentDecibel { get; private set; }
 
-    /// <summary>是否已取得过至少一次采样（未取得时组件显示占位文本）。</summary>
+    /// <summary>当前是否存在可用的默认捕获设备并已取得采样（否则组件显示占位文本与无形状状态）。</summary>
     public bool HasSample { get; private set; }
 
-    /// <summary>
-    /// 当前是否应点亮提醒状态点（红）：任一判定源处于超阈值、筛选窗口开启或冷却期。
-    /// 绿点表示上述条件均不成立。
-    /// </summary>
-    public bool IsAlertStateActive { get; private set; }
+    /// <summary>提醒状态点的当前状态（组件据此选择形状与填充）。</summary>
+    public IndicatorState IndicatorState { get; private set; } = IndicatorState.NoData;
+
+    /// <summary>数字颜色的判据结果：当前值是否已满足告警条件。</summary>
+    public IndicatorValueState IndicatorValueState { get; private set; } = IndicatorValueState.Unknown;
+
+    /// <summary>筛选窗口剩余时间进入呼吸阈值后为真（组件据此让三角呼吸）。</summary>
+    public bool IsIndicatorBreathing { get; private set; }
+
+    /// <summary>本次解析中状态或数字判据是否发生变化（组件据此跳过无变化的视觉重设）。</summary>
+    public bool IndicatorStateChanged { get; private set; }
 
     /// <summary>是否至少启用了一个判定源（决定组件是否显示提醒状态点）。</summary>
     public bool IsAnySourceEnabled => _autoSource.IsEnabled || _hotkeySource.IsEnabled;
-
-    /// <summary>热键判定源所处的筛选窗口是否开启（组件据此把状态点显示为红绿闪动）。</summary>
-    public bool IsHotkeyWindowOpen => _hotkeySource.IsWindowOpen;
 
     /// <param name="audioPeakMeter">共享的麦克风峰值采样服务。</param>
     /// <param name="settingsService">插件全局设置服务（可空；缺省时使用判定源内置默认参数）。</param>
@@ -125,6 +136,27 @@ public sealed class AlertRuntimeService : IHostedService, IDisposable
             // 防自激：执行提醒后 3 秒内暂停采样与判定
             if (DateTime.UtcNow < _pauseUntilUtc) return;
 
+            var nowUtc = DateTime.UtcNow;
+
+            // 默认捕获设备发生变化（含被拔出/禁用后为 null）时清空解析器状态与短窗口，
+            // 避免残留上一次的红色与迟滞标记
+            var deviceDescription = _audioPeakMeter.GetDefaultCaptureDeviceDescription();
+            if (deviceDescription != _lastDeviceDescription)
+            {
+                _lastDeviceDescription = deviceDescription;
+                _indicatorResolver.Reset();
+                _shortWindow.Clear();
+            }
+
+            // 无默认捕获设备时视为无采样：状态点不显示任何形状、数字显示占位文本，
+            // 不再伪装成"绿色正常"（仍需解析一次，否则组件读到的是上一次的状态）
+            if (deviceDescription is null)
+            {
+                HasSample = false;
+                UpdateIndicator(nowUtc, average: 0.0, shortAverage: 0.0);
+                return;
+            }
+
             var linear = await _audioPeakMeter.GetDefaultDevicePeakLinearAsync();
             var magnification = _settingsService?.Settings.Magnification ?? 1.0;
             var mapped = DecibelCalculator.LinearToDisplayDb(linear, magnification);
@@ -137,15 +169,15 @@ public sealed class AlertRuntimeService : IHostedService, IDisposable
             while (_window.Count > capacity) _window.RemoveAt(0);
             var average = AverageVolumeAlertEvaluator.CalculateAverage(_window);
 
-            var decision = _coordinator.Decide(new AlertContext(mapped, average), DateTime.UtcNow);
+            // 维护 1 秒短窗口平均（供冷却期数字判据使用，与判定用的平均窗口相互独立）：
+            // 先入队当前样本，再按真实时间戳剔除 1 秒之前的样本
+            _shortWindow.Enqueue((nowUtc, (float)mapped));
+            var shortAverage = GetShortWindowAverage(nowUtc, mapped);
 
-            // 提醒状态点：超阈值、筛选窗口开启、以及提醒后的冷却期都点亮（红点），其余为绿点
-            var nowUtc = DateTime.UtcNow;
-            IsAlertStateActive = _autoSource.IsTriggerActive
-                || _hotkeySource.IsTriggerActive
-                || _hotkeySource.IsWindowOpen
-                || _autoSource.IsCoolingDown(nowUtc)
-                || _hotkeySource.IsCoolingDown(nowUtc);
+            var decision = _coordinator.Decide(new AlertContext(mapped, average), nowUtc);
+
+            // 提醒状态点：由纯逻辑解析器把各判定源状态合并为单一枚举（取"是否需要用户动手"最高者）
+            UpdateIndicator(nowUtc, average, shortAverage);
 
             if (!decision.ShouldAlert) return;
 
@@ -158,6 +190,67 @@ public sealed class AlertRuntimeService : IHostedService, IDisposable
         {
             // 采样/判定任一步骤失败都不应抛出到定时器循环
         }
+    }
+
+    /// <summary>
+    /// 解析提醒状态并更新组件读取的显示属性。
+    /// </summary>
+    /// <param name="nowUtc">当前时间（UTC）。</param>
+    /// <param name="average">判定用的滑动窗口平均分贝。</param>
+    /// <param name="shortAverage">冷却期数字判据所用的 1 秒短窗口平均分贝。</param>
+    private void UpdateIndicator(DateTime nowUtc, double average, double shortAverage)
+    {
+        var windowOpen = _hotkeySource.IsWindowOpen;
+        var windowUntilUtc = _hotkeySource.WindowOpenUntilUtc;
+        var remaining = windowOpen && windowUntilUtc > nowUtc ? windowUntilUtc - nowUtc : TimeSpan.Zero;
+
+        var snapshot = _indicatorResolver.Update(new IndicatorInputs
+        {
+            HasSample = HasSample,
+            AnySourceEnabled = IsAnySourceEnabled,
+            AnyWindowOpen = windowOpen,
+            AnyTriggerActive = _autoSource.IsTriggerActive || _hotkeySource.IsTriggerActive,
+            AnyCoolingDown = _autoSource.IsCoolingDown(nowUtc) || _hotkeySource.IsCoolingDown(nowUtc),
+            AverageDecibel = average,
+            ShortWindowAverageDecibel = shortAverage,
+            Threshold = GetIndicatorThreshold(),
+            HotkeyWindowRemaining = remaining,
+            HotkeyWindowTimeout = _hotkeySource.WindowTimeout,
+        }, nowUtc);
+
+        IndicatorState = snapshot.State;
+        IndicatorValueState = snapshot.ValueState;
+        IsIndicatorBreathing = snapshot.IsBreathing;
+        IndicatorStateChanged = snapshot.Changed;
+    }
+
+    /// <summary>
+    /// 数字颜色判据的阈值：取已启用判定源中的最小阈值。
+    /// 各源的判据共用同一数值，因此"任一源超阈"等价于"数值超过最小阈值"；未启用任何源时取 0（该情形下判据为未知）。
+    /// </summary>
+    private double GetIndicatorThreshold()
+    {
+        var threshold = double.MaxValue;
+        if (_autoSource.IsEnabled) threshold = Math.Min(threshold, _autoSource.Threshold);
+        if (_hotkeySource.IsEnabled) threshold = Math.Min(threshold, _hotkeySource.Threshold);
+        return threshold == double.MaxValue ? 0.0 : threshold;
+    }
+
+    /// <summary>
+    /// 剔除 1 秒之前的样本并返回短窗口平均；窗口内无样本时返回 <paramref name="fallback"/>（最近一次采样值）。
+    /// </summary>
+    private double GetShortWindowAverage(DateTime nowUtc, double fallback)
+    {
+        while (_shortWindow.Count > 0 && nowUtc - _shortWindow.Peek().TimestampUtc > ShortWindowDuration)
+        {
+            _shortWindow.Dequeue();
+        }
+
+        if (_shortWindow.Count == 0) return fallback;
+
+        double sum = 0.0;
+        foreach (var sample in _shortWindow) sum += sample.Value;
+        return sum / _shortWindow.Count;
     }
 
     /// <summary>把插件全局设置同步到各判定源与仲裁模块（设置页改动下一拍即生效）。</summary>

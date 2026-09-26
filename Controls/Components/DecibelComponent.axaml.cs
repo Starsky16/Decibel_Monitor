@@ -5,6 +5,7 @@ using ClassIsland.Core.Abstractions.Controls;
 using ClassIsland.Core.Attributes;
 using ClassIsland.Shared;
 using Decibel_Monitor.Alarm;
+using Decibel_Monitor.Alerting;
 using DecibelComponentSettings = Decibel_Monitor.Models.ComponentSettings.DecibelComponentSettings;
 
 namespace Decibel_Monitor.Controls.Components;
@@ -118,7 +119,7 @@ public partial class DecibelComponent : ComponentBase<DecibelComponentSettings>
             // 应用设置的更新频率（设置变化后下一拍即生效）；
             // 筛选窗口开启时收紧到闪烁半周期，保证红绿交替看得见
             int intervalMs = Math.Clamp(Settings?.UpdateIntervalMs ?? 200, 100, 5000);
-            if (_runtimeService?.IsHotkeyWindowOpen == true) intervalMs = Math.Min(intervalMs, BlinkHalfPeriodMs);
+            if (_runtimeService?.IndicatorState == IndicatorState.AwaitingHotkey) intervalMs = Math.Min(intervalMs, BlinkHalfPeriodMs);
             if (Math.Abs(_updateTimer.Interval.TotalMilliseconds - intervalMs) > 0.5)
             {
                 _updateTimer.Interval = TimeSpan.FromMilliseconds(intervalMs);
@@ -142,9 +143,12 @@ public partial class DecibelComponent : ComponentBase<DecibelComponentSettings>
             // 单一状态点：红=提醒触发中（超阈值/冷却期），绿=正常；
             // 筛选窗口开启时红绿交替闪动，与静态状态区分开
             IsIndicatorVisible = showIndicator && _runtimeService.IsAnySourceEnabled;
-            IsIndicatorAlert = _runtimeService.IsHotkeyWindowOpen
-                ? Environment.TickCount64 / BlinkHalfPeriodMs % 2 == 0
-                : _runtimeService.IsAlertStateActive;
+            IsIndicatorAlert = _runtimeService.IndicatorState switch
+            {
+                IndicatorState.AwaitingHotkey => Environment.TickCount64 / BlinkHalfPeriodMs % 2 == 0,
+                IndicatorState.Alerting or IndicatorState.CoolingDown => true,
+                _ => false,
+            };
         }
         catch (Exception)
         {
