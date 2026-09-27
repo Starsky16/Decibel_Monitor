@@ -1,5 +1,19 @@
 # Decibel_Monitor
 
+> **AI 辅助说明**：本项目使用 AI 辅助生成，大部分代码由 AI 编写，作者负责审查其行为并保证功能与测试正常。
+
+> **关于本仓库**：本仓库是 [Yeson38/Decibel_Monitor](https://github.com/Yeson38/Decibel_Monitor) 的 fork。原项目及主要开发者是 [Yeson38](https://github.com/Yeson38)，本 fork 由 [Starsky16](https://github.com/Starsky16) 维护（保留原作者署名，本仓库为协作者维护的分支）。
+>
+> 相比原作者仓库的 `master`，本 fork 已包含下列改动，并已逐个作为 PR 提交给上游（进度见[上游 PR 列表](https://github.com/Yeson38/Decibel_Monitor/pulls)）：
+>
+> - 麦克风采样与计算核心重构：抽取共享采样服务、常驻静默捕获流、设备枚举与一次性采样分离；
+> - 组件与设置重构：设置分布收敛为「测量全局 / 显示随组件 / 提醒在通知」三处，新增插件设置页并把校准上收为全局设置；
+> - 阈值提醒：新增「分贝提醒」通知提供方与提醒渠道；
+> - 判定源框架：①超过阈值自动提醒、②超过阈值开筛选窗口并在窗口内按确认热键才提醒（需 KeyboardCapture 插件），各判定源带独立冷却；
+> - 提醒状态点：组件上以形状与呼吸表达当前状态，数字颜色随判据变化并带滞回；
+> - 时段闸门：课间休息与每节课开头若干分钟内抑制提醒，且抑制期间不占用冷却；
+> - 提醒正文时长可在通知提供方处配置，冷却时长下限提升至 60 秒。
+
 一个用于 ClassIsland 的分贝监测插件，通过一条常驻的低开销捕获流实时读取麦克风峰值并在主界面显示分贝映射值。支持全局校准（将数字音频幅度映射到目标 dBFS），并可通过系统实时计量作为补充。
 
 ## 主要功能
@@ -130,8 +144,9 @@
 ## 开发与贡献
 
 - 欢迎提交 issue 或 PR。请遵循仓库中的贡献指南（若存在 CONTRIBUTING.md）提交风格一致的修改。
-- 单元测试：`Tests/Decibel_Monitor.Tests` 覆盖 `DecibelCalculator` 与 `PeakSample` 纯函数（Windows 环境运行 `dotnet test`）。
+- 单元测试：`Tests/Decibel_Monitor.Tests` 覆盖计算器、采样、判定源、仲裁、状态解析与时段闸门等纯逻辑（Windows 环境运行 `dotnet test Tests/Decibel_Monitor.Tests`）。
 - Idea来自：[HAHAHAHAHAYINING](https://github.com/HAHAHAHAHAYINING),[讨论#561](https://github.com/ClassIsland/ClassIsland/discussions/561)
-- 主要开发者：[Yeson38](https://github.com/Yeson38)
+- 原项目与主要开发者：[Yeson38](https://github.com/Yeson38)（原作者）
+- 本 fork 维护者（协作者）：[Starsky16](https://github.com/Starsky16)
 - 参考代码：[CIImage](https://github.com/lrsgzs/CIImage)
 
