@@ -6,6 +6,9 @@ name: Integration Test
 
 on:
   push:
+    # 只在主干与开发分支推送时跑：本工作流每次都要下载整套 ClassIsland 宿主，开销较大；
+    # 发版 tag 指向的提交与 master 相同，无需再重复跑一遍。
+    branches: [master, dev]
   workflow_dispatch:
 
 jobs:

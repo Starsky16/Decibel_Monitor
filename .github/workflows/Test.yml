@@ -2,6 +2,8 @@ name: Test
 
 on:
   push:
+    # 只在主干与开发分支推送时跑，避免 fork 上任意分支推送都触发（PR 由 pull_request 覆盖）。
+    branches: [master, dev]
   workflow_dispatch:
   pull_request:
 
