@@ -3,14 +3,15 @@
 # YAML 教程：https://www.runoob.com/w3cnote/yaml-intro.html
 # 插件清单格式：https://docs.classisland.tech/zh-cn/latest/dev/plugins/create-project/#%E6%8F%92%E4%BB%B6%E6%B8%85%E5%8D%95%E6%96%87%E4%BB%B6
 
+# 本仓库是 Yeson38/Decibel_Monitor 的 fork，故 url 指向本仓库；author 保留原作者并追加协作者。
 id: Decibel_Monitor
 name: Decibel_Monitor
-description: 声音大小监测
+description: 声音大小监测，超过阈值时提醒
 entranceAssembly: "Decibel_Monitor.dll"
-url: https://github.com/Yeson38/Decibel_Monitor/
+url: https://github.com/Starsky16/Decibel_Monitor/
 version: 0.0.0.1
 apiVersion: 2.0.0.0
-author: Yeson
+author: Yeson, Starsky16
 # 可选依赖：安装后可用"热键判定源"（按键确认提醒）；未安装时插件其余功能不受影响。
 dependencies:
   - id: Starsky16.KeyboardCapture
