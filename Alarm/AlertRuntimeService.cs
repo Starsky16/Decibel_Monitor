@@ -44,6 +44,14 @@ public sealed class AlertRuntimeService : IHostedService, IDisposable
     /// <summary>平均窗口允许的样本数上限（防止窗口时长配置过大时无界占用内存）。</summary>
     private const int MaxWindowSamples = 2000;
 
+    /// <summary>冷却时间的最小值（秒），与设置页冷却滑块下限一致。</summary>
+    /// <remarks>
+    /// 一次提醒本身（遮罩 5 秒 + 正文）会盖住状态点约 35 秒，比它更短的冷却期会被提醒整段遮住、
+    /// 看不到冷却态。设置页已把滑块下限设为 60 秒，这里再夹一次是为了兜住存量配置里的小值
+    /// （旧版本允许设 0，语义为"无冷却"）。
+    /// </remarks>
+    private const int MinCooldownSeconds = 60;
+
     /// <summary>冷却期数字判据所用的短窗口时长（固定 1 秒，与判定用的平均窗口相互独立）。</summary>
     private static readonly TimeSpan ShortWindowDuration = TimeSpan.FromSeconds(1);
 
@@ -348,11 +356,11 @@ public sealed class AlertRuntimeService : IHostedService, IDisposable
 
         _autoSource.IsEnabled = settings.AutoSourceEnabled;
         _autoSource.Threshold = settings.AutoSourceThreshold;
-        _autoSource.Cooldown = TimeSpan.FromSeconds(Math.Max(0, settings.AutoSourceCooldownSeconds));
+        _autoSource.Cooldown = TimeSpan.FromSeconds(Math.Max(MinCooldownSeconds, settings.AutoSourceCooldownSeconds));
 
         _hotkeySource.IsEnabled = settings.HotkeySourceEnabled;
         _hotkeySource.Threshold = settings.HotkeySourceThreshold;
-        _hotkeySource.Cooldown = TimeSpan.FromSeconds(Math.Max(0, settings.HotkeySourceCooldownSeconds));
+        _hotkeySource.Cooldown = TimeSpan.FromSeconds(Math.Max(MinCooldownSeconds, settings.HotkeySourceCooldownSeconds));
         _hotkeySource.WindowTimeout = TimeSpan.FromSeconds(Math.Clamp(settings.HotkeyWindowSeconds, 1, 600));
         _hotkeySource.Hotkey = new HotkeyDefinition(settings.HotkeyKey ?? string.Empty, ComposeModifiers(settings));
 

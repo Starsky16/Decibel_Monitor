@@ -17,4 +17,14 @@ public partial class DecibelNotificationProviderSettings : ObservableObject
     /// 提醒正文（通知横幅显示的文字）。
     /// </summary>
     [ObservableProperty] private string _alertText = "请保持安静";
+
+    /// <summary>
+    /// 提醒正文（第二段）的显示时长（秒），取值 1~600。
+    /// </summary>
+    /// <remarks>
+    /// 一次提醒由两段拼成：遮罩固定为宿主 <see cref="ClassIsland.Core.Models.Notification.NotificationContent"/>
+    /// 的默认时长（5 秒），正文时长由本项决定，因此一次提醒的总时长 = 5 秒 + 本值。
+    /// 两段文案相同，肉眼看上去像一段；总时长短于判定源的冷却时间时，才能在提醒结束后看到冷却期的状态点。
+    /// </remarks>
+    [ObservableProperty] private int _overlayDurationSeconds = 30;
 }
