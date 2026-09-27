@@ -15,6 +15,8 @@ $summary = @"
 | 文件名 | MD5 |
 | --- | --- |
 "@
+# here-string 不含结尾换行，不补的话第一行数据会与表头折行粘连，表格在 Release 正文里渲染错乱
+$summary += "`n"
 
 foreach ($i in $files) {
     $name = $i.Name
