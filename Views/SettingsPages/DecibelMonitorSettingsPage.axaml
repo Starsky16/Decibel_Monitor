@@ -96,6 +96,27 @@
                        Text="同一次判定中多个判定源同时触发时，靠前者被记为触发提醒的判定源。"
                        TextWrapping="Wrap"/>
 
+            <!-- 时段闸门：对两个判定源都生效 -->
+            <fa:SettingsExpander Header="时段闸门"
+                                 IsExpanded="True"
+                                 Description="按课表时段抑制提醒：课间休息与每节课开头若干分钟内不发出通知，避免课间交谈、上课起立等声音被当成吵闹；抑制期间不占用判定源的冷却时间，状态点仍照常显示当前是否超阈值。课表未启用或未加载时本组设置不生效。">
+                <fa:SettingsExpanderItem Content="课间期间不提醒"
+                                         Description="课间休息时不再发出通知；组件上的状态点仍照常显示。">
+                    <fa:SettingsExpanderItem.Footer>
+                        <ToggleSwitch IsChecked="{Binding GlobalSettings.SuppressAlertDuringBreak, Mode=TwoWay}" />
+                    </fa:SettingsExpanderItem.Footer>
+                </fa:SettingsExpanderItem>
+                <fa:SettingsExpanderItem Content="上课初期保护时长"
+                                         Description="每节课开始后的这段时间内不提醒，用于避开上课起立、问好等固定声音；设为 0 表示关闭该保护。">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Slider Width="220" Minimum="0" Maximum="10" TickFrequency="1" IsSnapToTickEnabled="True"
+                                Value="{Binding GlobalSettings.ClassStartProtectionMinutes, Mode=TwoWay}" />
+                        <TextBlock VerticalAlignment="Center" Width="76"
+                                   Text="{Binding GlobalSettings.ClassStartProtectionMinutes, StringFormat='{}{0:F0} 分钟'}" />
+                    </StackPanel>
+                </fa:SettingsExpanderItem>
+            </fa:SettingsExpander>
+
             <!-- 判定源①：到阈值自动提醒 -->
             <fa:SettingsExpander Header="判定源①：自动提醒"
                                  Description="平均分贝超过阈值时立即发出提醒。"
@@ -113,9 +134,9 @@
                     </StackPanel>
                 </fa:SettingsExpanderItem>
                 <fa:SettingsExpanderItem Content="冷却时间"
-                                         Description="两次提醒之间的最小间隔；冷却期内状态点为红色但不重复提醒。">
+                                         Description="两次提醒之间的最小间隔；冷却期内状态点为红色空心方（表示提醒已发生）但不重复提醒。最小值 60 秒：一次提醒本身约 35 秒会盖住状态点，更短的冷却期会被提醒整段遮住、看不到。">
                     <StackPanel Orientation="Horizontal" Spacing="8">
-                        <Slider Width="220" Minimum="0" Maximum="1800" TickFrequency="30"
+                        <Slider Width="220" Minimum="60" Maximum="1800" TickFrequency="30"
                                 IsSnapToTickEnabled="True"
                                 Value="{Binding GlobalSettings.AutoSourceCooldownSeconds, Mode=TwoWay}" />
                         <TextBlock VerticalAlignment="Center" Width="76"
@@ -126,7 +147,7 @@
 
             <!-- 判定源②：到阈值开筛选窗口，窗口内命中热键才提醒 -->
             <fa:SettingsExpander Header="判定源②：热键确认"
-                                 Description="平均分贝超过阈值时开启筛选窗口，窗口内按下指定热键才提醒；窗口内没有按键则不提醒。窗口开启期间组件上的状态点会红绿闪动。"
+                                 Description="平均分贝超过阈值时开启筛选窗口，窗口内按下指定热键才提醒；窗口内没有按键则在超时后关闭窗口并进入冷却。窗口开启期间组件上的状态点为橙色三角。"
                                  IsEnabled="{Binding KeyboardCaptureAvailable}"
                                  IsExpanded="{Binding GlobalSettings.HotkeySourceEnabled, Mode=OneWay}">
                 <fa:SettingsExpander.Footer>
@@ -142,9 +163,9 @@
                     </StackPanel>
                 </fa:SettingsExpanderItem>
                 <fa:SettingsExpanderItem Content="冷却时间"
-                                         Description="两次提醒之间的最小间隔；冷却期内不再开启筛选窗口，状态点保持红色。">
+                                         Description="两次提醒之间的最小间隔；窗口超时未按键也会进入冷却；冷却期内不再开启筛选窗口，状态点保持红色空心方。最小值 60 秒：一次提醒本身约 35 秒会盖住状态点，更短的冷却期会被提醒整段遮住、看不到。">
                     <StackPanel Orientation="Horizontal" Spacing="8">
-                        <Slider Width="220" Minimum="0" Maximum="1800" TickFrequency="30"
+                        <Slider Width="220" Minimum="60" Maximum="1800" TickFrequency="30"
                                 IsSnapToTickEnabled="True"
                                 Value="{Binding GlobalSettings.HotkeySourceCooldownSeconds, Mode=TwoWay}" />
                         <TextBlock VerticalAlignment="Center" Width="76"
@@ -152,7 +173,7 @@
                     </StackPanel>
                 </fa:SettingsExpanderItem>
                 <fa:SettingsExpanderItem Content="筛选窗口时长"
-                                         Description="窗口开启后等待按键确认的时间，超时则关闭窗口且不提醒；窗口开启期间组件状态点红绿闪动。">
+                                         Description="窗口开启后等待按键确认的时间，超时则关闭窗口且不提醒，并按判定源②的冷却时间进入冷却；窗口开启期间组件状态点为橙色三角，窗口即将超时时三角会呼吸提示。">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Slider Width="220" Minimum="1" Maximum="60" TickFrequency="1"
                                 IsSnapToTickEnabled="True"

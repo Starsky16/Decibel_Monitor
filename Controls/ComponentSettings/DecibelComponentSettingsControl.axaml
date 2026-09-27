@@ -12,7 +12,8 @@
 
     <!-- 本面板（"小组件显示侧"）仅包含该组件的显示偏好。
          测量/校准（参考 dB、放大倍数）为全局设置，请到 设置 → Decibel_Monitor 页 校准；
-         提醒相关设置请到 设置 → 通知 → 分贝提醒。 -->
+         提醒判定（何时提醒）在 设置 → Decibel_Monitor 页 → 提醒判定，
+         提醒正文与语音在 设置 → 通知 → 分贝提醒。 -->
     <ScrollViewer
         DataContext="{Binding RelativeSource={RelativeSource Mode=FindAncestor, AncestorType={x:Type local:DecibelComponentSettingsControl}}}">
         <StackPanel Classes="settings-container animated-intro" Margin="12" Spacing="8">
@@ -41,7 +42,7 @@
                        TextWrapping="Wrap"/>
 
             <TextBlock FontSize="12" Classes="muted"
-                       Text="开启“提醒状态点”后，组件数值右侧会显示一个圆点：绿点表示正常，红点表示提醒触发中（超过阈值或处于提醒冷却期），红绿闪动表示“热键确认”的筛选窗口已开启、正在等待按键确认。关闭后仍会正常发出系统通知，只是不在组件上显示状态点。"
+                       Text="开启“提醒状态点”后，组件数值右侧会显示一个形状：绿圆表示正常，红空心方表示提醒已发出、正处于冷却期（冷却期内即使仍超阈值也保持空心方，表示“提醒已发生过”），红实心方表示正在超阈值（只在判定源冷却时间为 0 时可见）；显示橙色三角时表示“热键确认”的筛选窗口已开启、正在等待按键，窗口即将超时时三角会呼吸。无采样或未启用任何判定源时不显示形状。关闭“提醒状态点”后仍会正常发出系统通知，只是不在组件上显示状态点。"
                        TextWrapping="Wrap"/>
 
             <TextBlock FontSize="12" Classes="muted"

@@ -75,11 +75,14 @@ public sealed class DecibelNotificationProvider : NotificationProviderBase<Decib
     /// <param name="text">提醒正文。</param>
     private void NotifyOverThreshold(string text)
     {
+        // 正文时长由通知提供方设置决定（见 DecibelNotificationProviderSettings.OverlayDurationSeconds），
+        // 遮罩沿用宿主 NotificationContent 的默认时长（5 秒）。两者文案相同，总时长 = 5 秒 + 本值。
+        var overlaySeconds = Math.Clamp(Settings.OverlayDurationSeconds, 1, 600);
         var request = new NotificationRequest
         {
             ChannelId = Guid.Parse(OverThresholdChannelId),
             MaskContent = NotificationContent.CreateSimpleTextContent(text),
-            OverlayContent = NotificationContent.CreateSimpleTextContent(text, x => x.Duration = TimeSpan.FromSeconds(30)),
+            OverlayContent = NotificationContent.CreateSimpleTextContent(text, x => x.Duration = TimeSpan.FromSeconds(overlaySeconds)),
         };
         Channel(OverThresholdChannelId).ShowNotification(request);
     }

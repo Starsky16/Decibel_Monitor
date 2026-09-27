@@ -10,8 +10,12 @@ namespace Decibel_Monitor.Alerting;
 /// <list type="number">
 /// <item>窗口未开启时：平均分贝超过阈值且自身冷却已过 → <strong>打开筛选窗口</strong>（窗口期内暂不提醒）。</item>
 /// <item>窗口开启期间：外部注入按键事件（<see cref="HandleKeyPress"/>）；命中配置热键 → 置为"已确认"。</item>
-/// <item>后续采样判定：窗口开启且未超时并已确认 → 触发提醒并关闭窗口、进入冷却。</item>
-/// <item>窗口开启但超时未确认 → 不提醒，关闭窗口（不进入冷却，下次超阈值可再次开窗）。</item>
+/// <item>后续采样判定：窗口开启期间已确认 → 触发提醒并关闭窗口、进入冷却（不要求消费该确认的那一拍仍在窗口内，
+/// 否则落在窗口最后一个采样拍里的按键会被当成超时丢掉）。</item>
+/// <item>窗口开启但超时未确认 → 不提醒，关闭窗口<strong>并同样进入冷却</strong>（视为"已经给过一次机会"）；
+/// 冷却结束后若仍超阈值才会再次开窗。</item>
+/// <item>时段闸门抑制期间（<see cref="CancelWindow"/>）→ 窗口连同其中已命中的确认一起作废，
+/// <strong>不写冷却</strong>；闸门解除后若仍超阈值，重新开一个完整时长的窗口。</item>
 /// </list>
 /// 热键输入由外部注入（便于单元测试），本类只做纯逻辑判定，不接触键盘钩子。
 /// </remarks>
@@ -67,6 +71,12 @@ public sealed class HotkeyConfirmDecisionSource : IAlertDecisionSource
     /// <summary>当前筛选窗口是否开启（供组件显示提醒状态）。</summary>
     public bool IsWindowOpen { get; private set; }
 
+    /// <summary>
+    /// 筛选窗口的截止时间（UTC）。窗口未开启时为 <see cref="DateTime.MinValue"/>
+    /// （供运行时服务计算剩余时间与呼吸时机）。
+    /// </summary>
+    public DateTime WindowOpenUntilUtc => IsWindowOpen ? _windowOpenUntilUtc : DateTime.MinValue;
+
     /// <summary>当前是否处于"超过阈值"状态（供组件显示提醒状态）。</summary>
     public bool IsTriggerActive { get; private set; }
 
@@ -93,6 +103,22 @@ public sealed class HotkeyConfirmDecisionSource : IAlertDecisionSource
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// 作废当前筛选窗口（含其中已命中的确认），<strong>不写入冷却</strong>。未开窗时为空操作。
+    /// </summary>
+    /// <remarks>
+    /// 供时段闸门抑制期间调用。闸门期间不发通知，且状态点也不显示三角（用户没有被要求按键），
+    /// 因此此时开着的窗口（闸门开始前遗留的）必须作废，否则闸门解除后会用一段早已过期的确认去发提醒
+    /// ——表现为"课间按的键，上课后才响"。
+    /// 与"抑制期间不推进判定源"的约定一致：不写冷却，闸门结束后仍超阈值即重新开窗。
+    /// </remarks>
+    public void CancelWindow()
+    {
+        IsWindowOpen = false;
+        _confirmed = false;
+        _windowOpenUntilUtc = DateTime.MinValue;
     }
 
     /// <inheritdoc />
@@ -123,23 +149,34 @@ public sealed class HotkeyConfirmDecisionSource : IAlertDecisionSource
             return new AlertDecision(false, isActive);
         }
 
-        // 窗口已开但超时 → 关窗（本次不提醒，不进入冷却）
+        // 已命中热键 → 提醒。本分支必须先于超时判定：
+        // HandleKeyPress 接受按键时已经校验过"未超时"，因此 _confirmed 为真即代表按键确实落在窗口内。
+        // 若先判超时，落在窗口最后一个采样拍里的确认会被当成"超时未确认"清掉：
+        // 用户明明按了键却既不提醒、又白进一次冷却。
+        if (_confirmed)
+        {
+            IsWindowOpen = false;
+            _confirmed = false;
+            _nextAlertTimeUtc = nowUtc + EffectiveCooldown();
+            return new AlertDecision(true, isActive);
+        }
+
+        // 窗口已开但超时未确认 → 关窗并进入冷却。
+        // 不按键同样算一次"已经给过一次机会"：若只关窗不写冷却，下一拍就会立即重新开窗，
+        // 低阈值用法下三角会长期常亮，并永远看不到冷却态与正常态。
         if (nowUtc > _windowOpenUntilUtc)
         {
             IsWindowOpen = false;
             _confirmed = false;
+            _nextAlertTimeUtc = nowUtc + EffectiveCooldown();
             return new AlertDecision(false, isActive);
         }
 
-        // 窗口开启且未超时：只有已命中热键才提醒
-        if (!_confirmed) return new AlertDecision(false, isActive);
-
-        // 命中确认 → 触发提醒，关窗并进入冷却
-        IsWindowOpen = false;
-        _confirmed = false;
-        _nextAlertTimeUtc = nowUtc + (Cooldown > TimeSpan.Zero ? Cooldown : TimeSpan.Zero);
-        return new AlertDecision(true, isActive);
+        return new AlertDecision(false, isActive);
     }
+
+    /// <summary>生效冷却时间：负值按无冷却处理。</summary>
+    private TimeSpan EffectiveCooldown() => Cooldown > TimeSpan.Zero ? Cooldown : TimeSpan.Zero;
 
     private void Reset()
     {
