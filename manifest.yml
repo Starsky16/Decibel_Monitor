@@ -9,7 +9,7 @@ name: Decibel_Monitor
 description: 声音大小监测，超过阈值时提醒
 entranceAssembly: "Decibel_Monitor.dll"
 url: https://github.com/Starsky16/Decibel_Monitor/
-version: 0.0.0.1
+version: 0.1.0.0
 apiVersion: 2.0.0.0
 author: Yeson, Starsky16
 # 可选依赖：安装后可用"热键判定源"（按键确认提醒）；未安装时插件其余功能不受影响。

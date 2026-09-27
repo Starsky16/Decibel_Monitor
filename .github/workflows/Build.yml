@@ -2,8 +2,18 @@ name: Build
 
 on:
   push:
+    branches: [master, dev]
+    # 发版 tag 形如 a.b.c.d（四段数字），只有这种 tag 才触发构建并生成 Release。
+    # 注意：只写 branches 时 tag 推送不会触发本工作流，所以必须显式声明 tags。
+    tags:
+      - "[0-9]+.[0-9]+.[0-9]+.[0-9]+"
   workflow_dispatch:
   pull_request:
+
+# 创建 Release 需要写权限。本仓库默认工作流权限为 read，
+# 不显式声明时 ncipollo/release-action 会以 403 Resource not accessible by integration 失败。
+permissions:
+  contents: write
 
 jobs:
   build_app:
@@ -35,14 +45,23 @@ jobs:
       - name: Md5Checksum
         run: pwsh -ep bypass ./tools/generate-md5.ps1 cipx/
 
+      - name: Generate release body
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        shell: pwsh
+        run: |
+          $notes = Get-Content .github/release-notes.md -Raw
+          $sums = Get-Content ./cipx/checksums.md -Raw
+          # 正文 = 手写发布说明 + 校验和；写到已被 .gitignore 忽略的 cipx/ 下，不产生需要入库的文件
+          Set-Content -Path ./cipx/release-body.md -Value ($notes.TrimEnd() + "`n`n" + $sums.TrimStart()) -Encoding utf8
+
       - name: Upload APP to release
         uses: ncipollo/release-action@v1
         if: ${{ startsWith(github.ref, 'refs/tags/') }}
         with:
           artifacts: "./cipx/*.cipx"
-          draft: true
+          draft: false
           generateReleaseNotes: true
-          bodyFile: ./cipx/checksums.md
+          bodyFile: ./cipx/release-body.md
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload artifact
