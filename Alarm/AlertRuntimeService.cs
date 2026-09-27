@@ -191,6 +191,14 @@ public sealed class AlertRuntimeService : IHostedService, IDisposable
             {
                 decision = _coordinator.Decide(new AlertContext(mapped, average), nowUtc);
             }
+            else
+            {
+                // 闸门期间不发通知，且状态点不显示三角（用户没有被要求按键），
+                // 因此闸门开始前遗留的筛选窗口要连同其中已命中的确认一起作废——
+                // 否则闸门解除后会用一段早已过期的确认发提醒（课间按的键，上课后才响）。
+                // 不写冷却，维持"抑制期间不占用冷却"的约定。
+                _hotkeySource.CancelWindow();
+            }
 
             // 提醒状态点：由纯逻辑解析器把各判定源状态合并为单一枚举（取"是否需要用户动手"最高者）
             UpdateIndicator(nowUtc, average, shortAverage, scheduleGateSuppressed);

@@ -6,6 +6,7 @@ using ClassIsland.Shared;
 using Decibel_Monitor.Alerting;
 using KeyboardCapture.Abstractions;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace Decibel_Monitor.Alarm;
 
@@ -30,15 +31,19 @@ public sealed class HotkeyWindowMonitor : IHostedService, IDisposable
     private static readonly TimeSpan ResolveRetryInterval = TimeSpan.FromSeconds(2);
 
     private readonly HotkeyConfirmDecisionSource _source;
+    private readonly ILogger<HotkeyWindowMonitor>? _logger;
     private readonly object _gate = new();
     private Timer? _retryTimer;
     private IKeyboardCaptureService? _capture;
+    private bool _resolveFailureLogged;
     private bool _disposed;
 
     /// <param name="source">热键判定源（由 DI 以单例注入）。</param>
-    public HotkeyWindowMonitor(HotkeyConfirmDecisionSource source)
+    /// <param name="logger">可选的日志记录器：本链路异常时全程静默，日志是判断"断在哪一环"的唯一依据。</param>
+    public HotkeyWindowMonitor(HotkeyConfirmDecisionSource source, ILogger<HotkeyWindowMonitor>? logger = null)
     {
         _source = source ?? throw new ArgumentNullException(nameof(source));
+        _logger = logger;
     }
 
     /// <inheritdoc />
@@ -63,6 +68,15 @@ public sealed class HotkeyWindowMonitor : IHostedService, IDisposable
         var service = IAppHost.TryGetService<IKeyboardCaptureService>();
         if (service is null)
         {
+            if (!_resolveFailureLogged)
+            {
+                _resolveFailureLogged = true;
+                _logger?.LogWarning(
+                    "未解析到 KeyboardCapture 的 IKeyboardCaptureService，热键确认暂不可用（每 {Interval} 秒重试一次）。" +
+                    "请确认宿主已安装并启用 Starsky16.KeyboardCapture 插件。",
+                    ResolveRetryInterval.TotalSeconds);
+            }
+
             // KeyboardCapture 插件可能晚于本插件加载，定时重试直到解析成功
             lock (_gate)
             {
@@ -85,6 +99,9 @@ public sealed class HotkeyWindowMonitor : IHostedService, IDisposable
             _capture = service;
             service.KeyDown += OnKeyDown;
         }
+
+        _resolveFailureLogged = false;
+        _logger?.LogInformation("已接入 KeyboardCapture 全局键盘服务，热键确认可用。");
     }
 
     /// <summary>
@@ -95,13 +112,26 @@ public sealed class HotkeyWindowMonitor : IHostedService, IDisposable
         // 未开窗或未启用时不消费按键，直接返回避免无谓封送
         if (!_source.IsEnabled || !_source.IsWindowOpen) return;
 
+        var keyName = e.Key.Name;
+        var modifiers = ToHotkeyModifiers(e.Modifiers);
+
         // 封送到 UI 线程，与采样编排（判定源状态推进）同线程，避免竞态
         Dispatcher.UIThread.Post(() =>
         {
             if (_disposed) return;
             try
             {
-                _source.HandleKeyPress(e.Key.Name, ToHotkeyModifiers(e.Modifiers), DateTime.UtcNow);
+                if (_source.HandleKeyPress(keyName, modifiers, DateTime.UtcNow))
+                {
+                    _logger?.LogInformation("筛选窗口内命中确认热键：{Key}（{Modifiers}），下一拍发出提醒。", keyName, modifiers);
+                }
+                else
+                {
+                    // 未命中通常是键名或修饰键与配置不一致（如多按了 Shift）；也可能是封送期间窗口刚好超时关闭。
+                    // 只在 Debug 级别记录：窗口内每按一键都会触发一次（含用户打字），
+                    // 升到 Information 会污染宿主日志；排查"按了没反应"时再调高日志级别。
+                    _logger?.LogDebug("筛选窗口内收到未命中的按键：{Key}（{Modifiers}）。", keyName, modifiers);
+                }
             }
             catch
             {
