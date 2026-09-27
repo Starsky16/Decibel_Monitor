@@ -59,8 +59,11 @@ public partial class DecibelComponent : ComponentBase<DecibelComponentSettings>
     private volatile bool _isActive;
     private volatile bool _isUpdating;
 
-    /// <summary>本实例是否已把视觉属性应用到控件上（首次附着时 Change 标志为假，需要强制应用一次）。</summary>
-    private bool _visualsApplied;
+    /// <summary>本实例最近一次写入视觉属性的形状状态（自持比对用，见 <see cref="UpdateTimer_Tick"/>）。</summary>
+    private IndicatorState _appliedState = IndicatorState.NoData;
+
+    /// <summary>本实例最近一次写入视觉属性的数字颜色判据。</summary>
+    private IndicatorValueState _appliedValueState = IndicatorValueState.Unknown;
 
     /// <summary>
     /// 当前显示的分贝值文本（Avalonia 属性，绑定自动响应变化）。
@@ -166,9 +169,6 @@ public partial class DecibelComponent : ComponentBase<DecibelComponentSettings>
     {
         base.OnDetachedFromVisualTree(e);
 
-        // 重新附着时状态未必发生变化（Change 标志为假），需要再次强制应用一次视觉属性
-        _visualsApplied = false;
-
         if (!_isActive) return;
         _isActive = false;
         _updateTimer.Tick -= UpdateTimer_Tick;
@@ -205,6 +205,7 @@ public partial class DecibelComponent : ComponentBase<DecibelComponentSettings>
                 : "N/A";
 
             var state = _runtimeService.IndicatorState;
+            var valueState = _runtimeService.IndicatorValueState;
 
             // 无采样或未启用任何判定源时（解析结果 NoData）不显示任何形状
             IsIndicatorVisible = showIndicator && state != IndicatorState.NoData;
@@ -212,17 +213,21 @@ public partial class DecibelComponent : ComponentBase<DecibelComponentSettings>
             // 呼吸的起止由时间推进而非状态变化触发，不在 Change 标志内，必须每拍读取
             IsBreathing = _runtimeService.IsIndicatorBreathing;
 
-            // 形状与数字颜色是"离散状态"，只在状态或判据变化时重设；
-            // 新实例首次附着时 Change 标志必为假，用 _visualsApplied 兜底强制应用一次
-            if (_visualsApplied && !_runtimeService.IndicatorStateChanged) return;
+            // 形状与数字颜色是"离散状态"：只在与本实例已应用的组合不同时才重设。
+            // 这里不能依赖服务侧的 IndicatorStateChanged —— 它是宽度只有一个采样拍（200 ms）的脉冲，
+            // 组件节拍（默认 500 ms）可能整拍落在脉冲之外；一旦漏读，形状会一直冻结在旧值，
+            // 直到下一次被捕获的脉冲为止（表现为"热键窗口已开却仍显示空心方"，且此时按键仍能提醒）。
+            // 改为自持最近一次应用值比对后，最坏情况只是滞后一个组件节拍，不会长期冻结。
+            if (state == _appliedState && valueState == _appliedValueState) return;
 
             IsCircleVisible = state == IndicatorState.Normal;
             IsSquareFilledVisible = state == IndicatorState.Alerting;
             IsSquareHollowVisible = state == IndicatorState.CoolingDown;
             IsTriangleVisible = state == IndicatorState.AwaitingHotkey;
-            IsValueAboveThreshold = _runtimeService.IndicatorValueState == IndicatorValueState.Above;
-            IsValueWithinThreshold = _runtimeService.IndicatorValueState == IndicatorValueState.Below;
-            _visualsApplied = true;
+            IsValueAboveThreshold = valueState == IndicatorValueState.Above;
+            IsValueWithinThreshold = valueState == IndicatorValueState.Below;
+            _appliedState = state;
+            _appliedValueState = valueState;
         }
         catch (Exception)
         {
