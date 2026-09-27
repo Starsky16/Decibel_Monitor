@@ -86,9 +86,6 @@ public sealed class AlertRuntimeService : IHostedService, IDisposable
     /// <summary>筛选窗口剩余时间进入呼吸阈值后为真（组件据此让三角呼吸）。</summary>
     public bool IsIndicatorBreathing { get; private set; }
 
-    /// <summary>本次解析中状态或数字判据是否发生变化（组件据此跳过无变化的视觉重设）。</summary>
-    public bool IndicatorStateChanged { get; private set; }
-
     /// <summary>是否至少启用了一个判定源（决定组件是否显示提醒状态点）。</summary>
     public bool IsAnySourceEnabled => _autoSource.IsEnabled || _hotkeySource.IsEnabled;
 
@@ -286,7 +283,6 @@ public sealed class AlertRuntimeService : IHostedService, IDisposable
         IndicatorState = snapshot.State;
         IndicatorValueState = snapshot.ValueState;
         IsIndicatorBreathing = snapshot.IsBreathing;
-        IndicatorStateChanged = snapshot.Changed;
     }
 
     /// <summary>
