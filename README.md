@@ -2,9 +2,9 @@
 
 > **AI 辅助说明**：本项目使用 AI 辅助生成，大部分代码由 AI 编写，作者负责审查其行为并保证功能与测试正常。
 
-> **关于本仓库**：本仓库是 [Yeson38/Decibel_Monitor](https://github.com/Yeson38/Decibel_Monitor) 的 fork。原项目及主要开发者是 [Yeson38](https://github.com/Yeson38)，本 fork 由 [Starsky16](https://github.com/Starsky16) 维护（保留原作者署名，本仓库为协作者维护的分支）。
+> **关于本仓库**：本仓库是 [Yeson38/Decibel_Monitor](https://github.com/Yeson38/Decibel_Monitor) 的 fork。原项目及主要开发者是 [Yeson38](https://github.com/Yeson38)，本 fork 由 [Starsky16](https://github.com/Starsky16) 独立维护（保留原作者署名）。
 >
-> 相比原作者仓库的 `master`，本 fork 已包含下列改动，并已逐个作为 PR 提交给上游（进度见[上游 PR 列表](https://github.com/Yeson38/Decibel_Monitor/pulls)）：
+> 本 fork **独立演进**：相比原作者仓库的 `master` 已包含下列改动，这些改动**只保留在本 fork，不向上游提交 PR**。安装请从本仓库的 [Releases](https://github.com/Starsky16/Decibel_Monitor/releases) 下载 `.cipx`。
 >
 > - 麦克风采样与计算核心重构：抽取共享采样服务、常驻静默捕获流、设备枚举与一次性采样分离；
 > - 组件与设置重构：设置分布收敛为「测量全局 / 显示随组件 / 提醒在通知」三处，新增插件设置页并把校准上收为全局设置；
