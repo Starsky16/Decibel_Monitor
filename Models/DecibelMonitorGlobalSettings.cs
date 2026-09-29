@@ -77,6 +77,17 @@ public partial class DecibelMonitorGlobalSettings : ObservableObject
     /// </summary>
     [ObservableProperty] private int _classStartProtectionMinutes = 3;
 
+    // ── 临时静默 / 临时开启（入口在托盘菜单与自动化动作）────────────────
+
+    /// <summary>
+    /// 「静默本节课」在取不到本节课剩余时间（课表未加载、非上课状态）时的兜底时长（分钟），
+    /// 默认 45，按 1..1440 夹取（消费端处理）。
+    /// </summary>
+    [ObservableProperty] private int _silenceFallbackMinutes = 45;
+
+    /// <summary>「静默一个午」的固定时长（分钟），默认 60，按 1..1440 夹取（消费端处理）。</summary>
+    [ObservableProperty] private int _noonSilenceMinutes = 60;
+
     // ── 判定源①：到阈值自动提醒 ─────────────────────────────────────────
 
     /// <summary>是否启用"自动提醒"判定源（超过阈值立即提醒）。</summary>

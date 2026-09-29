@@ -117,6 +117,29 @@
                 </fa:SettingsExpanderItem>
             </fa:SettingsExpander>
 
+            <!-- 临时静默 / 临时开启：入口不在本页，只配置时长 -->
+            <fa:SettingsExpander Header="临时静默 / 临时开启"
+                                 Description="临时停掉或临时打开提醒，到点自动恢复，无需重启 ClassIsland。入口在托盘菜单「更多选项…」与自动化动作里；本组只配置两种时长。静默期间不发出通知、也不占用判定源冷却，状态点仍照常显示当前是否吵；临时开启期间两个判定源都照常工作。状态不持久化，重启宿主即恢复常态。">
+                <fa:SettingsExpanderItem Content="本节课兜底时长"
+                                         Description="点「静默本节课」时若取不到本节课剩余时间（课表未加载、当前不在上课状态），改用该时长。">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Slider Width="220" Minimum="1" Maximum="180" TickFrequency="1" IsSnapToTickEnabled="True"
+                                Value="{Binding GlobalSettings.SilenceFallbackMinutes, Mode=TwoWay}" />
+                        <TextBlock VerticalAlignment="Center" Width="76"
+                                   Text="{Binding GlobalSettings.SilenceFallbackMinutes, StringFormat='{}{0:F0} 分钟'}" />
+                    </StackPanel>
+                </fa:SettingsExpanderItem>
+                <fa:SettingsExpanderItem Content="一个午时长"
+                                         Description="点「静默一个午」时静默的固定时长（默认 60 分钟，即一个午休）。">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Slider Width="220" Minimum="1" Maximum="180" TickFrequency="1" IsSnapToTickEnabled="True"
+                                Value="{Binding GlobalSettings.NoonSilenceMinutes, Mode=TwoWay}" />
+                        <TextBlock VerticalAlignment="Center" Width="76"
+                                   Text="{Binding GlobalSettings.NoonSilenceMinutes, StringFormat='{}{0:F0} 分钟'}" />
+                    </StackPanel>
+                </fa:SettingsExpanderItem>
+            </fa:SettingsExpander>
+
             <!-- 判定源①：到阈值自动提醒 -->
             <fa:SettingsExpander Header="判定源①：自动提醒"
                                  Description="平均分贝超过阈值时立即发出提醒。"

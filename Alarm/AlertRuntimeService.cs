@@ -31,6 +31,8 @@ namespace Decibel_Monitor.Alarm;
 /// 维护判定用的平均窗口与冷却期判据所用的 1 秒短窗口，状态含义与滞回规则全部归解析器（纯逻辑、可单测）。</description></item>
 /// <item><description><strong>时段闸门</strong>：课间休息与每节课开头若干分钟内不推进判定源（<see cref="ScheduleGate"/>，
 /// 依赖宿主课表状态）。这些时段的误报既不发出通知、也不占用冷却；状态点仍照常显示当前是否超阈值。</description></item>
+/// <item><description><strong>临时静默</strong>（<see cref="AlertOverrideService"/>，入口在托盘菜单与自动化动作）：
+/// 走与时段闸门完全相同的抑制分支，只停通知、不占用冷却；「临时开启」则在判定源层面等价于"设置里启用"。</description></item>
 /// </list>
 /// </remarks>
 public sealed class AlertRuntimeService : IHostedService, IDisposable
@@ -58,6 +60,7 @@ public sealed class AlertRuntimeService : IHostedService, IDisposable
     private readonly AudioPeakMeter _audioPeakMeter;
     private readonly DecibelMonitorSettingsService? _settingsService;
     private readonly AlertDecisionCoordinator _coordinator;
+    private readonly AlertOverrideService? _alertOverride;
     private readonly AutoThresholdDecisionSource _autoSource;
     private readonly HotkeyConfirmDecisionSource _hotkeySource;
     private readonly List<float> _window = new();
@@ -92,18 +95,21 @@ public sealed class AlertRuntimeService : IHostedService, IDisposable
     /// <param name="audioPeakMeter">共享的麦克风峰值采样服务。</param>
     /// <param name="settingsService">插件全局设置服务（可空；缺省时使用判定源内置默认参数）。</param>
     /// <param name="coordinator">仲裁模块（自持判定源集合与优先级配置）。</param>
+    /// <param name="alertOverride">临时静默 / 临时开启服务（可空；缺省时视为未覆盖）。</param>
     /// <param name="autoSource">自动提醒判定源（同步其设置）。</param>
     /// <param name="hotkeySource">热键确认判定源（同步其设置，并暴露筛选窗口状态）。</param>
     public AlertRuntimeService(
         AudioPeakMeter audioPeakMeter,
         DecibelMonitorSettingsService? settingsService,
         AlertDecisionCoordinator coordinator,
+        AlertOverrideService? alertOverride,
         AutoThresholdDecisionSource autoSource,
         HotkeyConfirmDecisionSource hotkeySource)
     {
         _audioPeakMeter = audioPeakMeter ?? throw new ArgumentNullException(nameof(audioPeakMeter));
         _settingsService = settingsService;
         _coordinator = coordinator ?? throw new ArgumentNullException(nameof(coordinator));
+        _alertOverride = alertOverride;
         _autoSource = autoSource ?? throw new ArgumentNullException(nameof(autoSource));
         _hotkeySource = hotkeySource ?? throw new ArgumentNullException(nameof(hotkeySource));
 
@@ -190,7 +196,7 @@ public sealed class AlertRuntimeService : IHostedService, IDisposable
             if (deviceDescription is null)
             {
                 HasSample = false;
-                UpdateIndicator(nowUtc, average: 0.0, shortAverage: 0.0, scheduleGateSuppressed: false);
+                UpdateIndicator(nowUtc, average: 0.0, shortAverage: 0.0, decisionSuppressed: false);
                 return;
             }
 
@@ -214,24 +220,26 @@ public sealed class AlertRuntimeService : IHostedService, IDisposable
             // 时段闸门：课间与上课初期抑制提醒。闸门生效时必须跳过 Decide 调用——
             // Decide 一旦被调用就会写入冷却时间，课间的一次误报会吃掉整段冷却，
             // 导致进入上课后该提醒而不提醒（比不提醒更严重）。
+            // 临时静默走完全相同的抑制分支：不推进判定源、不写冷却、不发通知（状态点照常显示）。
             var scheduleGateSuppressed = EvaluateScheduleGate(nowUtc);
+            var decisionSuppressed = scheduleGateSuppressed || (_alertOverride?.IsSilenced(nowUtc) ?? false);
 
             var decision = default(CoordinatorDecision);
-            if (!scheduleGateSuppressed)
+            if (!decisionSuppressed)
             {
                 decision = _coordinator.Decide(new AlertContext(mapped, average), nowUtc);
             }
             else
             {
-                // 闸门期间不发通知，且状态点不显示三角（用户没有被要求按键），
-                // 因此闸门开始前遗留的筛选窗口要连同其中已命中的确认一起作废——
-                // 否则闸门解除后会用一段早已过期的确认发提醒（课间按的键，上课后才响）。
+                // 抑制期间不发通知，且状态点不显示三角（用户没有被要求按键），
+                // 因此抑制开始前遗留的筛选窗口要连同其中已命中的确认一起作废——
+                // 否则抑制解除后会用一段早已过期的确认发提醒（课间按的键，上课后才响）。
                 // 不写冷却，维持"抑制期间不占用冷却"的约定。
                 _hotkeySource.CancelWindow();
             }
 
             // 提醒状态点：由纯逻辑解析器把各判定源状态合并为单一枚举（取"是否需要用户动手"最高者）
-            UpdateIndicator(nowUtc, average, shortAverage, scheduleGateSuppressed);
+            UpdateIndicator(nowUtc, average, shortAverage, decisionSuppressed);
 
             if (!decision.ShouldAlert) return;
 
@@ -252,8 +260,8 @@ public sealed class AlertRuntimeService : IHostedService, IDisposable
     /// <param name="nowUtc">当前时间（UTC）。</param>
     /// <param name="average">判定用的滑动窗口平均分贝。</param>
     /// <param name="shortAverage">冷却期数字判据所用的 1 秒短窗口平均分贝。</param>
-    /// <param name="scheduleGateSuppressed">本拍是否被时段闸门抑制（抑制时判定源未被推进，其状态不可用于显示）。</param>
-    private void UpdateIndicator(DateTime nowUtc, double average, double shortAverage, bool scheduleGateSuppressed)
+    /// <param name="decisionSuppressed">本拍是否被抑制（时段闸门或临时静默；抑制时判定源未被推进，其状态不可用于显示）。</param>
+    private void UpdateIndicator(DateTime nowUtc, double average, double shortAverage, bool decisionSuppressed)
     {
         var threshold = GetIndicatorThreshold();
 
@@ -262,11 +270,11 @@ public sealed class AlertRuntimeService : IHostedService, IDisposable
         bool coolingDown;
         TimeSpan remaining;
 
-        if (scheduleGateSuppressed)
+        if (decisionSuppressed)
         {
-            // 闸门生效期间判定源本拍未被推进，其内部状态（超阈值 / 冷却 / 筛选窗口）停留在闸门开始前的旧值，
+            // 抑制期间判定源本拍未被推进，其内部状态（超阈值 / 冷却 / 筛选窗口）停留在抑制开始前的旧值，
             // 因此不参与显示。状态点改由"当前窗口平均是否超阈值"直接驱动，
-            // 只回答"现在吵不吵"——与"课间只停通知、照常显示噪音"的约定一致。
+            // 只回答"现在吵不吵"——与"抑制只停通知、照常显示噪音"的约定一致。
             windowOpen = false;
             triggerActive = IsAnySourceEnabled && average > threshold;
             coolingDown = false;
@@ -375,12 +383,16 @@ public sealed class AlertRuntimeService : IHostedService, IDisposable
         var settings = _settingsService?.Settings;
         if (settings is null) return;
 
-        _autoSource.IsEnabled = settings.AutoSourceEnabled;
+        // 临时开启（ForceEnableForMinutes）在判定源层面等价于"设置里启用"：
+        // 两源任一被临时开启时都照常工作，从而支持"上课默认禁用 + 需要时临时开启"的用法。
+        var forced = _alertOverride?.IsForceEnabled(DateTime.UtcNow) ?? false;
+
+        _autoSource.IsEnabled = settings.AutoSourceEnabled || forced;
         _autoSource.Threshold = settings.AutoSourceThreshold;
         _autoSource.Cooldown = TimeSpan.FromSeconds(Math.Max(MinCooldownSeconds, settings.AutoSourceCooldownSeconds));
         _autoSource.SustainThreshold = TimeSpan.FromSeconds(Math.Clamp(settings.AutoSourceSustainSeconds, 0, 60));
 
-        _hotkeySource.IsEnabled = settings.HotkeySourceEnabled;
+        _hotkeySource.IsEnabled = settings.HotkeySourceEnabled || forced;
         _hotkeySource.Threshold = settings.HotkeySourceThreshold;
         _hotkeySource.Cooldown = TimeSpan.FromSeconds(Math.Max(MinCooldownSeconds, settings.HotkeySourceCooldownSeconds));
         _hotkeySource.WindowTimeout = TimeSpan.FromSeconds(Math.Clamp(settings.HotkeyWindowSeconds, 1, 600));

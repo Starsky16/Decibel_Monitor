@@ -34,6 +34,9 @@ namespace Decibel_Monitor
                 sp.GetServices<Alerting.IAlertDecisionSource>(),
                 sourcePriorityOrder: null));
 
+            // 临时静默 / 临时开启（入口在托盘菜单与自动化动作，由采样拍读取，无需额外定时器）
+            services.AddSingleton<Alarm.AlertOverrideService>();
+
             // 热键筛选窗口监视：KeyboardCapture 为非必需依赖，未安装时降级为空转
             services.AddSingleton<Alarm.HotkeyWindowMonitor>();
             services.AddHostedService(sp => sp.GetRequiredService<Alarm.HotkeyWindowMonitor>());
