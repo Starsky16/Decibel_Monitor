@@ -57,17 +57,25 @@ public sealed class AlertOverrideService
     {
         var nowUtc = DateTime.UtcNow;
         var remaining = TryGetRemainingClassTime();
-        var duration = remaining ?? TimeSpan.FromMinutes(ClampMinutes(_settingsService.Settings.SilenceFallbackMinutes));
-        _override.SilenceUntil(nowUtc, nowUtc + duration);
+        if (remaining is { } duration)
+        {
+            _override.SilenceUntil(nowUtc, nowUtc + duration);
+            return;
+        }
+
+        SilenceForMinutes(_settingsService.Settings.SilenceFallbackMinutes);
+    }
+
+    /// <summary>静默指定分钟数。</summary>
+    /// <param name="minutes">静默时长（分钟），按 1..1440 夹取。</param>
+    public void SilenceForMinutes(int minutes)
+    {
+        var nowUtc = DateTime.UtcNow;
+        _override.SilenceUntil(nowUtc, nowUtc + TimeSpan.FromMinutes(ClampMinutes(minutes)));
     }
 
     /// <summary>静默一个午：固定 <see cref="Models.DecibelMonitorGlobalSettings.NoonSilenceMinutes"/> 分钟。</summary>
-    public void SilenceForNoon()
-    {
-        var nowUtc = DateTime.UtcNow;
-        var minutes = ClampMinutes(_settingsService.Settings.NoonSilenceMinutes);
-        _override.SilenceUntil(nowUtc, nowUtc + TimeSpan.FromMinutes(minutes));
-    }
+    public void SilenceForNoon() => SilenceForMinutes(_settingsService.Settings.NoonSilenceMinutes);
 
     /// <summary>静默到今日结束（本地零点）。</summary>
     public void SilenceForToday()

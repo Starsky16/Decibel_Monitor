@@ -37,6 +37,17 @@ namespace Decibel_Monitor
             // 临时静默 / 临时开启（入口在托盘菜单与自动化动作，由采样拍读取，无需额外定时器）
             services.AddSingleton<Alarm.AlertOverrideService>();
 
+            // 托盘「更多选项…」下的「分贝监测」子菜单（宿主就绪后自行安装）
+            services.AddSingleton<Alarm.TrayMenuOverrideController>();
+            services.AddHostedService(sp => sp.GetRequiredService<Alarm.TrayMenuOverrideController>());
+
+            // 自动化行动：静默 / 恢复 / 临时开启（可与宿主触发器组合出"上课静默、课间恢复"）
+            services.AddAction<Alerting.Actions.SilenceAlertAction,
+                Controls.ActionSettings.SilenceAlertActionSettingsControl>();
+            services.AddAction<Alerting.Actions.ResumeAlertAction>();
+            services.AddAction<Alerting.Actions.ForceEnableAlertAction,
+                Controls.ActionSettings.ForceEnableAlertActionSettingsControl>();
+
             // 热键筛选窗口监视：KeyboardCapture 为非必需依赖，未安装时降级为空转
             services.AddSingleton<Alarm.HotkeyWindowMonitor>();
             services.AddHostedService(sp => sp.GetRequiredService<Alarm.HotkeyWindowMonitor>());
