@@ -12,6 +12,7 @@ public sealed class AutoThresholdDecisionSource : IAlertDecisionSource
     public const string SourceId = "auto-threshold";
 
     private DateTime _nextAlertTimeUtc = DateTime.MinValue;
+    private readonly SustainedDurationTracker _sustainTracker = new();
 
     /// <param name="threshold">提醒阈值（显示刻度 0..150）。</param>
     /// <param name="cooldown">提醒冷却时间；为 null 时表示无冷却。</param>
@@ -39,6 +40,12 @@ public sealed class AutoThresholdDecisionSource : IAlertDecisionSource
     /// <inheritdoc />
     public TimeSpan Cooldown { get; set; }
 
+    /// <summary>
+    /// 连续超阈时长要求：平均分贝需连续超过阈值至少该时长才提醒。
+    /// <see cref="TimeSpan.Zero"/>（默认）表示不做持续性要求，只看平均值。
+    /// </summary>
+    public TimeSpan SustainThreshold { get; set; }
+
     /// <summary>下一次允许提醒的时间（UTC）；<see cref="DateTime.MinValue"/> 表示从未提醒过。</summary>
     public DateTime NextAlertTimeUtc => _nextAlertTimeUtc;
 
@@ -50,6 +57,27 @@ public sealed class AutoThresholdDecisionSource : IAlertDecisionSource
         IsEnabled && _nextAlertTimeUtc != DateTime.MinValue && nowUtc < _nextAlertTimeUtc;
 
     /// <inheritdoc />
+    public bool WouldAlert(AlertContext context, DateTime nowUtc)
+    {
+        if (!IsEnabled) return false;
+
+        // 阈值比较为严格大于：等于阈值不算超阈值（与 Decide 同口径）
+        if (!(context.AverageDecibel > Threshold)) return false;
+        if (!_sustainTracker.IsSustained(true, nowUtc, SustainThreshold)) return false;
+
+        return nowUtc >= _nextAlertTimeUtc;
+    }
+
+    /// <inheritdoc />
+    public AlertDecision Observe(AlertContext context, DateTime nowUtc)
+    {
+        // 推进本拍状态（含条件满足时照常写入冷却），但不发出提醒：
+        // 保证同一拍最多只有被仲裁选中的目标源产生一条通知（计划 §21.1）。
+        var decision = Decide(context, nowUtc);
+        return decision with { ShouldAlert = false };
+    }
+
+    /// <inheritdoc />
     public AlertDecision Decide(AlertContext context, DateTime nowUtc)
     {
         if (!IsEnabled)
@@ -57,13 +85,20 @@ public sealed class AutoThresholdDecisionSource : IAlertDecisionSource
             // 未启用时清空状态：再次启用后不会沿用旧冷却
             IsTriggerActive = false;
             _nextAlertTimeUtc = DateTime.MinValue;
+            _sustainTracker.Reset();
             return default;
         }
 
         // 阈值比较为严格大于：等于阈值不算超阈值
         var isActive = context.AverageDecibel > Threshold;
         IsTriggerActive = isActive;
-        if (!isActive) return new AlertDecision(false, false);
+
+        // 连续超阈要求（与平均窗口正交）只影响"是否提醒"；是否超阈值的显示仍用原始判断，
+        // 否则抑制期状态点会自相矛盾地显示"不吵"，而画面上的数字明明已经超过阈值。
+        if (!_sustainTracker.Update(isActive, nowUtc, SustainThreshold))
+        {
+            return new AlertDecision(false, isActive);
+        }
 
         if (nowUtc < _nextAlertTimeUtc) return new AlertDecision(false, true);
 

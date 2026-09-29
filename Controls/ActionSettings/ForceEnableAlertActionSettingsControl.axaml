@@ -1,0 +1,12 @@
+<ci:ActionSettingsControlBase x:Class="Decibel_Monitor.Controls.ActionSettings.ForceEnableAlertActionSettingsControl"
+                              x:TypeArguments="actionSettings:ForceEnableAlertActionSettings"
+                              xmlns="https://github.com/avaloniaui"
+                              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                              xmlns:ci="http://classisland.tech/schemas/xaml/core"
+                              xmlns:actionSettings="clr-namespace:Decibel_Monitor.Models.ActionSettings">
+    <!-- 临时开启只有时长一个参数；绑定走 DataContext（行动项）的 Settings -->
+    <ci:Field Label="时长" Suffix="分钟" HorizontalAlignment="Left">
+        <NumericUpDown MinWidth="150" Minimum="1" Maximum="1440"
+                       Value="{Binding Settings.Minutes, Mode=TwoWay}" />
+    </ci:Field>
+</ci:ActionSettingsControlBase>

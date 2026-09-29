@@ -117,6 +117,29 @@
                 </fa:SettingsExpanderItem>
             </fa:SettingsExpander>
 
+            <!-- 临时静默 / 临时开启：入口不在本页，只配置时长 -->
+            <fa:SettingsExpander Header="临时静默 / 临时开启"
+                                 Description="临时停掉或临时打开提醒，到点自动恢复，无需重启 ClassIsland。入口在托盘菜单「更多选项…」与自动化动作里；本组只配置两种时长。静默期间不发出通知、也不占用判定源冷却，状态点仍照常显示当前是否吵；临时开启期间两个判定源都照常工作。状态不持久化，重启宿主即恢复常态。">
+                <fa:SettingsExpanderItem Content="本节课兜底时长"
+                                         Description="点「静默本节课」时若取不到本节课剩余时间（课表未加载、当前不在上课状态），改用该时长。">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Slider Width="220" Minimum="1" Maximum="180" TickFrequency="1" IsSnapToTickEnabled="True"
+                                Value="{Binding GlobalSettings.SilenceFallbackMinutes, Mode=TwoWay}" />
+                        <TextBlock VerticalAlignment="Center" Width="76"
+                                   Text="{Binding GlobalSettings.SilenceFallbackMinutes, StringFormat='{}{0:F0} 分钟'}" />
+                    </StackPanel>
+                </fa:SettingsExpanderItem>
+                <fa:SettingsExpanderItem Content="一个午时长"
+                                         Description="点「静默一个午」时静默的固定时长（默认 60 分钟，即一个午休）。">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Slider Width="220" Minimum="1" Maximum="180" TickFrequency="1" IsSnapToTickEnabled="True"
+                                Value="{Binding GlobalSettings.NoonSilenceMinutes, Mode=TwoWay}" />
+                        <TextBlock VerticalAlignment="Center" Width="76"
+                                   Text="{Binding GlobalSettings.NoonSilenceMinutes, StringFormat='{}{0:F0} 分钟'}" />
+                    </StackPanel>
+                </fa:SettingsExpanderItem>
+            </fa:SettingsExpander>
+
             <!-- 判定源①：到阈值自动提醒 -->
             <fa:SettingsExpander Header="判定源①：自动提醒"
                                  Description="平均分贝超过阈值时立即发出提醒。"
@@ -141,6 +164,16 @@
                                 Value="{Binding GlobalSettings.AutoSourceCooldownSeconds, Mode=TwoWay}" />
                         <TextBlock VerticalAlignment="Center" Width="76"
                                    Text="{Binding GlobalSettings.AutoSourceCooldownSeconds, StringFormat='{}{0:F0} 秒'}" />
+                    </StackPanel>
+                </fa:SettingsExpanderItem>
+                <fa:SettingsExpanderItem Content="连续超阈时长"
+                                         Description="平均分贝需连续超过阈值这段时间才提醒；0 表示不做持续性要求（只看平均值）。与平均窗口叠加使用：先平滑、再计时；被时段闸门或提醒后的暂停打断时会重新计时。">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Slider Width="220" Minimum="0" Maximum="60" TickFrequency="1"
+                                IsSnapToTickEnabled="True"
+                                Value="{Binding GlobalSettings.AutoSourceSustainSeconds, Mode=TwoWay}" />
+                        <TextBlock VerticalAlignment="Center" Width="76"
+                                   Text="{Binding GlobalSettings.AutoSourceSustainSeconds, StringFormat='{}{0:F0} 秒'}" />
                     </StackPanel>
                 </fa:SettingsExpanderItem>
             </fa:SettingsExpander>
@@ -172,6 +205,16 @@
                                    Text="{Binding GlobalSettings.HotkeySourceCooldownSeconds, StringFormat='{}{0:F0} 秒'}" />
                     </StackPanel>
                 </fa:SettingsExpanderItem>
+                <fa:SettingsExpanderItem Content="连续超阈时长"
+                                         Description="平均分贝需连续超过阈值这段时间才开启筛选窗口；0 表示不做持续性要求（只看平均值）。与平均窗口叠加使用：先平滑、再计时；被时段闸门或提醒后的暂停打断时会重新计时。">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Slider Width="220" Minimum="0" Maximum="60" TickFrequency="1"
+                                IsSnapToTickEnabled="True"
+                                Value="{Binding GlobalSettings.HotkeySourceSustainSeconds, Mode=TwoWay}" />
+                        <TextBlock VerticalAlignment="Center" Width="76"
+                                   Text="{Binding GlobalSettings.HotkeySourceSustainSeconds, StringFormat='{}{0:F0} 秒'}" />
+                    </StackPanel>
+                </fa:SettingsExpanderItem>
                 <fa:SettingsExpanderItem Content="筛选窗口时长"
                                          Description="窗口开启后等待按键确认的时间，超时则关闭窗口且不提醒，并按判定源②的冷却时间进入冷却；窗口开启期间组件状态点为橙色三角，窗口即将超时时三角会呼吸提示。">
                     <StackPanel Orientation="Horizontal" Spacing="8">
@@ -183,10 +226,10 @@
                     </StackPanel>
                 </fa:SettingsExpanderItem>
                 <fa:SettingsExpanderItem Content="确认热键"
-                                         Description="窗口内按下该组合键即确认提醒。键名与 KeyboardCapture 一致，如 F5、Space、A。">
+                                         Description="从列表中选择窗口内确认提醒所用的按键；需要与修饰键同时按下才命中。">
                     <ci:Field Label="键名">
-                        <TextBox Width="160" Watermark="如 F5"
-                                 Text="{Binding GlobalSettings.HotkeyKey, Mode=TwoWay}" />
+                        <ComboBox Width="160" ItemsSource="{Binding HotkeyKeyOptions}"
+                                  SelectedItem="{Binding GlobalSettings.HotkeyKey, Mode=TwoWay}" />
                     </ci:Field>
                 </fa:SettingsExpanderItem>
                 <fa:SettingsExpanderItem Content="修饰键"
@@ -196,6 +239,22 @@
                         <CheckBox Content="Alt" IsChecked="{Binding GlobalSettings.HotkeyAlt, Mode=TwoWay}" />
                         <CheckBox Content="Shift" IsChecked="{Binding GlobalSettings.HotkeyShift, Mode=TwoWay}" />
                         <CheckBox Content="Win" IsChecked="{Binding GlobalSettings.HotkeyMeta, Mode=TwoWay}" />
+                    </StackPanel>
+                </fa:SettingsExpanderItem>
+                <fa:SettingsExpanderItem Content="应急强制提醒"
+                                         Description="开启后，1 秒内连按确认热键若干次即可立即提醒——不看阈值、不看是否在冷却，课间等时段闸门也一并绕过。提醒发出后会重置冷却计时。建议把确认热键设为 F 区功能键，避免打字或游戏时误触发。">
+                    <fa:SettingsExpanderItem.Footer>
+                        <ToggleSwitch IsChecked="{Binding GlobalSettings.ForceAlertEnabled, Mode=TwoWay}" />
+                    </fa:SettingsExpanderItem.Footer>
+                </fa:SettingsExpanderItem>
+                <fa:SettingsExpanderItem Content="连按次数"
+                                         Description="应急强制提醒所需的连按次数；相邻两次按键间隔超过 1 秒即重新计数。">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Slider Width="220" Minimum="2" Maximum="10" TickFrequency="1"
+                                IsSnapToTickEnabled="True"
+                                Value="{Binding GlobalSettings.ForceAlertPressCount, Mode=TwoWay}" />
+                        <TextBlock VerticalAlignment="Center" Width="76"
+                                   Text="{Binding GlobalSettings.ForceAlertPressCount, StringFormat='{}{0:F0} 次'}" />
                     </StackPanel>
                 </fa:SettingsExpanderItem>
             </fa:SettingsExpander>

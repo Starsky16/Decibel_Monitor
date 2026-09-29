@@ -18,7 +18,8 @@ public readonly record struct CoordinatorDecision(bool ShouldAlert, string? Trig
 /// 职责与边界：
 /// <list type="bullet">
 /// <item><description>持有判定源集合与优先级配置（<see cref="SourcePriorityOrder"/>），<strong>优先级只在此配置</strong>，判定源自身不带优先级。</description></item>
-/// <item><description>每个采样周期调用所有启用判定源的 <see cref="IAlertDecisionSource.Decide"/>，取优先级最高的触发结果。</description></item>
+/// <item><description>每个采样周期先探测（<see cref="IAlertDecisionSource.WouldAlert"/>）选出优先级最高的目标源，
+/// 再只对它调 <see cref="IAlertDecisionSource.Decide"/>，其余判定源走 <see cref="IAlertDecisionSource.Observe"/>。</description></item>
 /// <item><description>裁定需要提醒时，通过 <see cref="NotifyRequested"/> 事件唯一出口发出通知——<strong>判定源不接触通知</strong>。</description></item>
 /// </list>
 /// <exception cref="InvalidOperationException">构造时未提供任何判定源。</exception>
@@ -88,26 +89,54 @@ public sealed class AlertDecisionCoordinator
     }
 
     /// <summary>
-    /// 依据当前上下文仲裁是否提醒：调用所有启用判定源（各自推进内部状态机），取优先级最高的触发结果。
-    /// 若需提醒，触发 <see cref="NotifyRequested"/> 事件并返回对应结果。
+    /// 两段式仲裁：先在"所有判定源均未被推进"的一致快照上按优先级选出唯一目标源
+    /// （<see cref="IAlertDecisionSource.WouldAlert"/>，不改状态），再只对目标源调
+    /// <see cref="IAlertDecisionSource.Decide"/>；其余判定源一律走
+    /// <see cref="IAlertDecisionSource.Observe"/>（推进本拍状态但不发提醒）。
+    /// 若目标源判定需要提醒，触发 <see cref="NotifyRequested"/> 事件并返回对应结果。
     /// </summary>
+    /// <remarks>
+    /// <list type="bullet">
+    /// <item><description><strong>先探测后决定</strong>：若边决定边探测，前面判定源的状态落地会改变后面判定源的条件，
+    /// 目标源就会随遍历顺序漂移，优先级配置失去意义。</description></item>
+    /// <item><description><strong>同一拍至多一条通知</strong>：只有目标源可能发出提醒；本拍条件同样成立的其余判定源
+    /// 在 <see cref="IAlertDecisionSource.Observe"/> 内按"已给过一次机会"照常落地（写冷却 / 关窗），
+    /// 因此不会在下一拍补发第二条。</description></item>
+    /// </list>
+    /// </remarks>
     public CoordinatorDecision Decide(AlertContext context, DateTime nowUtc)
     {
-        // 必须先让所有判定源各自完成一次判定：判定源内部有冷却/筛选窗口等状态机，
-        // 提前返回会让低优先级判定源错过本周期，导致其窗口无法按时关闭。
-        string? triggerSourceId = null;
+        var target = FindTarget(context, nowUtc);
+
+        var alerted = false;
         foreach (var source in _sources)
         {
-            var decision = source.Decide(context, nowUtc);
-            if (decision.ShouldAlert && triggerSourceId is null)
+            if (ReferenceEquals(source, target))
             {
-                triggerSourceId = source.Id;
+                if (!source.Decide(context, nowUtc).ShouldAlert) continue;
+
+                NotifyRequested?.Invoke(source.Id);
+                alerted = true;
+                continue;
             }
+
+            // 含未启用的判定源：推进一次以清空/刷新自身状态（未启用时 Observe 与 Decide 同样返回"不提醒"）
+            source.Observe(context, nowUtc);
         }
 
-        if (triggerSourceId is null) return new CoordinatorDecision(false, null);
+        return alerted ? new CoordinatorDecision(true, target!.Id) : new CoordinatorDecision(false, null);
+    }
 
-        NotifyRequested?.Invoke(triggerSourceId);
-        return new CoordinatorDecision(true, triggerSourceId);
+    /// <summary>
+    /// 第一段（探测）：按优先级顺序返回第一个"本拍会提醒"的启用判定源；都没有则为 null。
+    /// </summary>
+    private IAlertDecisionSource? FindTarget(AlertContext context, DateTime nowUtc)
+    {
+        foreach (var source in _sources)
+        {
+            if (source.IsEnabled && source.WouldAlert(context, nowUtc)) return source;
+        }
+
+        return null;
     }
 }

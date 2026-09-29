@@ -1,0 +1,21 @@
+<ci:ActionSettingsControlBase x:Class="Decibel_Monitor.Controls.ActionSettings.SilenceAlertActionSettingsControl"
+                              x:TypeArguments="actionSettings:SilenceAlertActionSettings"
+                              xmlns="https://github.com/avaloniaui"
+                              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                              xmlns:ci="http://classisland.tech/schemas/xaml/core"
+                              xmlns:actionSettings="clr-namespace:Decibel_Monitor.Models.ActionSettings">
+    <!-- 绑定走 DataContext（宿主为行动项 ActionItem）的 Settings 属性，与宿主自带行动设置控件一致 -->
+    <StackPanel Orientation="Horizontal" Spacing="12">
+        <ci:Field Label="静默到" HorizontalAlignment="Left">
+            <ComboBox Width="140" SelectedIndex="{Binding Settings.KindIndex, Mode=TwoWay}">
+                <ComboBoxItem Content="本节课" />
+                <ComboBoxItem Content="指定分钟" />
+                <ComboBoxItem Content="今日结束" />
+            </ComboBox>
+        </ci:Field>
+        <ci:Field Label="时长" Suffix="分钟" IsVisible="{Binding Settings.IsMinutesKind}">
+            <NumericUpDown MinWidth="130" Minimum="1" Maximum="1440"
+                           Value="{Binding Settings.Minutes, Mode=TwoWay}" />
+        </ci:Field>
+    </StackPanel>
+</ci:ActionSettingsControlBase>

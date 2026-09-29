@@ -105,15 +105,27 @@ public sealed class HotkeyWindowMonitor : IHostedService, IDisposable
     }
 
     /// <summary>
-    /// 全局按键按下事件（后台线程触发）。仅在筛选窗口开启期间转发给判定源，命中热键即确认。
+    /// 全局按键按下事件（后台线程触发）。仅在筛选窗口开启期间转发给判定源，命中热键即确认；
+    /// 窗口未开但启用了应急强制通道时，命中热键的按键也要转发（供连按计数）。
     /// </summary>
     private void OnKeyDown(object? sender, KeyboardKeyEventArgs e)
     {
-        // 未开窗或未启用时不消费按键，直接返回避免无谓封送
-        if (!_source.IsEnabled || !_source.IsWindowOpen) return;
+        // 判定源未启用时本链路整体不工作，直接返回避免无谓封送
+        if (!_source.IsEnabled) return;
 
         var keyName = e.Key.Name;
         var modifiers = ToHotkeyModifiers(e.Modifiers);
+
+        // 窗口未开时的两条出路：应急强制通道（需连按计数）或无事可做。
+        // 全局钩子会报告用户敲下的每一次按键，故强制通道下先在这里按键名与修饰键过滤，
+        // 只把命中确认热键的按键封送到 UI 线程（用户打字、游戏操作不会产生封送开销）。
+        // 此处读 Hotkey 属于跨线程读，但该属性只在 UI 线程的 ApplySettings 中整值替换，
+        // 最坏结果是一次不匹配（该次按键不计入连按），不会产生错误动作。
+        if (!_source.IsWindowOpen
+            && (!_source.ForceAlertEnabled || !_source.Hotkey.Matches(keyName, modifiers)))
+        {
+            return;
+        }
 
         // 封送到 UI 线程，与采样编排（判定源状态推进）同线程，避免竞态
         Dispatcher.UIThread.Post(() =>

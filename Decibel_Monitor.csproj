@@ -43,6 +43,12 @@
       <Compile Update="Views\SettingsPages\DecibelMonitorSettingsPage.axaml.cs">
         <DependentUpon>DecibelMonitorSettingsPage.axaml</DependentUpon>
       </Compile>
+      <Compile Update="Controls\ActionSettings\SilenceAlertActionSettingsControl.axaml.cs">
+        <DependentUpon>SilenceAlertActionSettingsControl.axaml</DependentUpon>
+      </Compile>
+      <Compile Update="Controls\ActionSettings\ForceEnableAlertActionSettingsControl.axaml.cs">
+        <DependentUpon>ForceEnableAlertActionSettingsControl.axaml</DependentUpon>
+      </Compile>
     </ItemGroup>
 
     <ItemGroup>

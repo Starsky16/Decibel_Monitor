@@ -154,4 +154,130 @@ public class AutoThresholdDecisionSourceTests
 
         Assert.False(source.IsCoolingDown(Now));
     }
+
+    // ---- 连续超阈时长 ----
+
+    private const double OverThreshold = 120.0;
+
+    /// <summary>按 250 ms 节拍推进判定（模拟真实采样，避免触发 SustainedDurationTracker 的 MaxGap 中断）。</summary>
+    private static void Advance(AutoThresholdDecisionSource source, double averageDb, DateTime startUtc, TimeSpan span)
+    {
+        var step = TimeSpan.FromMilliseconds(250);
+        for (var t = TimeSpan.Zero; t <= span; t += step)
+        {
+            source.Decide(Context(averageDb), startUtc + t);
+        }
+    }
+
+    /// <summary>按 250 ms 节拍推进判定，返回首次提醒的时间偏移；始终未提醒则为 null。</summary>
+    private static TimeSpan? FirstAlertOffset(AutoThresholdDecisionSource source, double averageDb, DateTime startUtc, TimeSpan span)
+    {
+        var step = TimeSpan.FromMilliseconds(250);
+        for (var t = TimeSpan.Zero; t <= span; t += step)
+        {
+            if (source.Decide(Context(averageDb), startUtc + t).ShouldAlert) return t;
+        }
+
+        return null;
+    }
+
+    [Fact]
+    public void Decide_Should_AlertImmediately_WhenSustainThresholdIsZero()
+    {
+        var source = CreateSource();
+        source.SustainThreshold = TimeSpan.Zero;
+
+        Assert.True(source.Decide(Context(OverThreshold), Now).ShouldAlert);
+    }
+
+    [Fact]
+    public void Decide_Should_NotAlert_BeforeSustainDurationElapsed()
+    {
+        var source = CreateSource();
+        source.SustainThreshold = TimeSpan.FromSeconds(5);
+
+        Assert.False(source.Decide(Context(OverThreshold), Now).ShouldAlert);
+        // 尚未满足持续性要求时，仍应如实显示"超阈值"，否则状态点与读数自相矛盾
+        Assert.True(source.IsTriggerActive);
+
+        Assert.Equal(TimeSpan.FromSeconds(5), FirstAlertOffset(source, OverThreshold, Now, TimeSpan.FromSeconds(6)));
+    }
+
+    [Fact]
+    public void Decide_Should_RestartSustain_WhenDropsBelowThreshold()
+    {
+        var source = CreateSource();
+        source.SustainThreshold = TimeSpan.FromSeconds(5);
+
+        // 连续超阈 2 秒后安静下来，累计作废
+        Advance(source, OverThreshold, Now, TimeSpan.FromSeconds(2));
+        source.Decide(Context(50.0), Now.AddMilliseconds(2250));
+
+        // 重新超阈：需重新连续满 5 秒，故接下来 4 秒内不应提醒
+        Assert.Null(FirstAlertOffset(source, OverThreshold, Now.AddSeconds(2.5), TimeSpan.FromSeconds(4)));
+    }
+
+    // ---- 探测与观察（P1 两段式） ----
+
+    [Fact]
+    public void WouldAlert_Should_MirrorDecide()
+    {
+        var probe = CreateSource();
+        var decide = CreateSource();
+
+        Assert.True(probe.WouldAlert(Context(OverThreshold), Now));
+        Assert.True(decide.Decide(Context(OverThreshold), Now).ShouldAlert);
+    }
+
+    [Fact]
+    public void WouldAlert_Should_BeFalse_WhenDisabled_BelowThreshold_OrCoolingDown()
+    {
+        Assert.False(CreateSource(enabled: false).WouldAlert(Context(OverThreshold), Now));
+        Assert.False(CreateSource().WouldAlert(Context(Threshold), Now));
+
+        var cooling = CreateSource(TimeSpan.FromMinutes(5));
+        cooling.Decide(Context(OverThreshold), Now);
+        Assert.False(cooling.WouldAlert(Context(OverThreshold), Now.AddMinutes(1)));
+    }
+
+    [Fact]
+    public void WouldAlert_Should_NotAdvanceSustainTracker()
+    {
+        // 探测不得推进"连续超阈"计时：否则仲裁的探测阶段就能把连续时长凑满
+        var source = CreateSource();
+        source.SustainThreshold = TimeSpan.FromSeconds(5);
+
+        for (var t = TimeSpan.Zero; t <= TimeSpan.FromSeconds(6); t += TimeSpan.FromMilliseconds(250))
+        {
+            Assert.False(source.WouldAlert(Context(OverThreshold), Now + t));
+        }
+    }
+
+    [Fact]
+    public void Observe_Should_AdvanceState_ButNotAlert()
+    {
+        var source = CreateSource(TimeSpan.FromMinutes(5));
+
+        var observed = source.Observe(Context(OverThreshold), Now);
+
+        Assert.False(observed.ShouldAlert);
+        Assert.True(observed.IsTriggerActive);
+        // 落地与 Decide 一致：冷却照常写入 ⇒ 不会在下一拍补发第二条通知
+        Assert.Equal(Now.AddMinutes(5), source.NextAlertTimeUtc);
+        Assert.True(source.IsCoolingDown(Now.AddMinutes(1)));
+    }
+
+    [Fact]
+    public void Observe_Should_ClearState_WhenDisabled()
+    {
+        var source = CreateSource(TimeSpan.FromMinutes(5));
+        source.Decide(Context(OverThreshold), Now);
+
+        source.IsEnabled = false;
+        var observed = source.Observe(Context(OverThreshold), Now.AddMinutes(1));
+
+        Assert.False(observed.ShouldAlert);
+        Assert.False(source.IsTriggerActive);
+        Assert.Equal(DateTime.MinValue, source.NextAlertTimeUtc);
+    }
 }

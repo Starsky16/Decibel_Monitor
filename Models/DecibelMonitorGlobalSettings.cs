@@ -77,6 +77,17 @@ public partial class DecibelMonitorGlobalSettings : ObservableObject
     /// </summary>
     [ObservableProperty] private int _classStartProtectionMinutes = 3;
 
+    // ── 临时静默 / 临时开启（入口在托盘菜单与自动化动作）────────────────
+
+    /// <summary>
+    /// 「静默本节课」在取不到本节课剩余时间（课表未加载、非上课状态）时的兜底时长（分钟），
+    /// 默认 45，按 1..1440 夹取（消费端处理）。
+    /// </summary>
+    [ObservableProperty] private int _silenceFallbackMinutes = 45;
+
+    /// <summary>「静默一个午」的固定时长（分钟），默认 60，按 1..1440 夹取（消费端处理）。</summary>
+    [ObservableProperty] private int _noonSilenceMinutes = 60;
+
     // ── 判定源①：到阈值自动提醒 ─────────────────────────────────────────
 
     /// <summary>是否启用"自动提醒"判定源（超过阈值立即提醒）。</summary>
@@ -88,6 +99,12 @@ public partial class DecibelMonitorGlobalSettings : ObservableObject
     /// <summary>"自动提醒"判定源的冷却时间（秒），默认 600 秒（10 分钟）。</summary>
     [ObservableProperty] private int _autoSourceCooldownSeconds = 600;
 
+    /// <summary>
+    /// "自动提醒"判定源的连续超阈时长（秒），默认 0（只看平均窗口、不要求持续）。
+    /// 与平均窗口正交：窗口先做平滑，本项再要求持续，叠加后响应更慢但更抗瞬时误报。
+    /// </summary>
+    [ObservableProperty] private int _autoSourceSustainSeconds;
+
     // ── 判定源②：到阈值开筛选窗口，窗口内命中热键才提醒 ─────────────────
 
     /// <summary>是否启用"热键确认"判定源（需要 KeyboardCapture 插件提供按键事件）。</summary>
@@ -98,6 +115,12 @@ public partial class DecibelMonitorGlobalSettings : ObservableObject
 
     /// <summary>"热键确认"判定源的冷却时间（秒），默认 600 秒（10 分钟）。</summary>
     [ObservableProperty] private int _hotkeySourceCooldownSeconds = 600;
+
+    /// <summary>
+    /// "热键确认"判定源的连续超阈时长（秒），默认 0（只看平均窗口、不要求持续）。
+    /// 与平均窗口正交：窗口先做平滑，本项再要求持续，叠加后响应更慢但更抗瞬时误报。
+    /// </summary>
+    [ObservableProperty] private int _hotkeySourceSustainSeconds;
 
     /// <summary>"热键确认"判定源筛选窗口的开启时长（秒），默认 10 秒。</summary>
     [ObservableProperty] private int _hotkeyWindowSeconds = 10;
@@ -116,4 +139,16 @@ public partial class DecibelMonitorGlobalSettings : ObservableObject
 
     /// <summary>筛选窗口内要求命中的热键是否包含 Win（Meta）修饰键。</summary>
     [ObservableProperty] private bool _hotkeyMeta;
+
+    /// <summary>
+    /// 是否启用"应急强制提醒"：短时间内连按确认热键若干次即立即提醒，
+    /// <strong>无视阈值、冷却期与时段闸门</strong>。默认关闭——键盘是全局钩子，
+    /// 默认开启会让"随手连按两下确认键"（含打字、游戏）直接发出提醒。
+    /// </summary>
+    [ObservableProperty] private bool _forceAlertEnabled;
+
+    /// <summary>
+    /// 应急强制提醒所需的连按次数（相邻两按间隔不超过 1 秒），默认 2，按 2..10 夹取（消费端处理）。
+    /// </summary>
+    [ObservableProperty] private int _forceAlertPressCount = 2;
 }

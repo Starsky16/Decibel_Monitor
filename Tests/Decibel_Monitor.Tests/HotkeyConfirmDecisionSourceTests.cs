@@ -378,4 +378,240 @@ public class HotkeyConfirmDecisionSourceTests
         Assert.False(HotkeyDefinition.None.Matches(KeyName, HotkeyModifiers.None));
         Assert.False(new HotkeyDefinition(KeyName, HotkeyModifiers.None).Matches(null, HotkeyModifiers.None));
     }
+
+    // ---- 应急强制提醒 ----
+
+    private static HotkeyConfirmDecisionSource CreateForceSource(
+        int pressCount = 2,
+        TimeSpan? cooldown = null,
+        HotkeyModifiers modifiers = HotkeyModifiers.None)
+        => new(Threshold, new HotkeyDefinition(KeyName, modifiers), Window, cooldown)
+        {
+            IsEnabled = true,
+            ForceAlertEnabled = true,
+            ForceAlertPressCount = pressCount,
+        };
+
+    [Fact]
+    public void ForceAlert_Should_RequestOncePressCountReached()
+    {
+        var source = CreateForceSource(pressCount: 2);
+
+        Assert.False(source.HandleKeyPress(KeyName, HotkeyModifiers.None, Now));
+        Assert.False(source.TryConsumeForceRequest(Now.AddMilliseconds(500)));
+        Assert.False(source.HandleKeyPress(KeyName, HotkeyModifiers.None, Now.AddMilliseconds(500)));
+
+        Assert.True(source.TryConsumeForceRequest(Now.AddMilliseconds(600)));
+        // 请求只能消费一次
+        Assert.False(source.TryConsumeForceRequest(Now.AddMilliseconds(700)));
+    }
+
+    [Fact]
+    public void ForceAlert_Should_RestartCounting_WhenIntervalExceeded()
+    {
+        var source = CreateForceSource(pressCount: 2);
+
+        source.HandleKeyPress(KeyName, HotkeyModifiers.None, Now);
+        // 间隔超过 1 秒：第一次按键失效，本次只算第 1 次
+        source.HandleKeyPress(KeyName, HotkeyModifiers.None, Now.AddMilliseconds(1500));
+
+        Assert.False(source.TryConsumeForceRequest(Now.AddMilliseconds(1600)));
+    }
+
+    [Fact]
+    public void ForceAlert_Should_HonourConfiguredPressCount()
+    {
+        var source = CreateForceSource(pressCount: 3);
+
+        source.HandleKeyPress(KeyName, HotkeyModifiers.None, Now);
+        source.HandleKeyPress(KeyName, HotkeyModifiers.None, Now.AddMilliseconds(300));
+        Assert.False(source.TryConsumeForceRequest(Now.AddMilliseconds(400)));
+
+        source.HandleKeyPress(KeyName, HotkeyModifiers.None, Now.AddMilliseconds(600));
+        Assert.True(source.TryConsumeForceRequest(Now.AddMilliseconds(700)));
+    }
+
+    [Fact]
+    public void ForceAlert_Should_CountPresses_WhileWindowClosed()
+    {
+        var source = CreateForceSource(pressCount: 2);
+
+        // 从未调用 Decide：筛选窗口未开，强制通道仍应计数
+        source.HandleKeyPress(KeyName, HotkeyModifiers.None, Now);
+        source.HandleKeyPress(KeyName, HotkeyModifiers.None, Now.AddMilliseconds(300));
+
+        Assert.True(source.TryConsumeForceRequest(Now.AddMilliseconds(400)));
+    }
+
+    [Fact]
+    public void ForceAlert_Should_NotCount_WhenDisabled()
+    {
+        var source = CreateSource(cooldown: TimeSpan.FromSeconds(60));
+
+        source.HandleKeyPress(KeyName, HotkeyModifiers.None, Now);
+        source.HandleKeyPress(KeyName, HotkeyModifiers.None, Now.AddMilliseconds(300));
+
+        Assert.False(source.TryConsumeForceRequest(Now.AddMilliseconds(400)));
+    }
+
+    [Fact]
+    public void ForceAlert_Should_IgnoreOtherKeysAndModifiers()
+    {
+        var source = CreateForceSource(pressCount: 2, modifiers: HotkeyModifiers.Ctrl);
+
+        source.HandleKeyPress("F6", HotkeyModifiers.Ctrl, Now);
+        source.HandleKeyPress(KeyName, HotkeyModifiers.None, Now.AddMilliseconds(100));
+        source.HandleKeyPress(KeyName, HotkeyModifiers.Ctrl, Now.AddMilliseconds(200));
+
+        Assert.False(source.TryConsumeForceRequest(Now.AddMilliseconds(300)));
+    }
+
+    [Fact]
+    public void ForceAlert_Should_WriteCooldown_WhenConsumed()
+    {
+        var source = CreateForceSource(pressCount: 2, cooldown: TimeSpan.FromSeconds(60));
+
+        source.HandleKeyPress(KeyName, HotkeyModifiers.None, Now);
+        source.HandleKeyPress(KeyName, HotkeyModifiers.None, Now.AddMilliseconds(300));
+        Assert.True(source.TryConsumeForceRequest(Now.AddSeconds(1)));
+
+        Assert.True(source.IsCoolingDown(Now.AddSeconds(2)));
+        Assert.False(source.IsCoolingDown(Now.AddSeconds(62)));
+    }
+
+    [Fact]
+    public void ForceAlert_Should_CloseWindow_WhenConsumed()
+    {
+        var source = CreateForceSource(pressCount: 2);
+
+        // 窗口未开时连按两次即挂起请求
+        source.HandleKeyPress(KeyName, HotkeyModifiers.None, Now);
+        source.HandleKeyPress(KeyName, HotkeyModifiers.None, Now.AddMilliseconds(300));
+
+        // 此时判定恰好开出筛选窗口
+        source.Decide(Context(120.0), Now.AddMilliseconds(400));
+        Assert.True(source.IsWindowOpen);
+
+        // 兑现强制提醒时必须关掉该窗口，否则紧随其后的判定会再经确认分支发一条重复提醒
+        Assert.True(source.TryConsumeForceRequest(Now.AddMilliseconds(500)));
+        Assert.False(source.IsWindowOpen);
+    }
+
+    [Fact]
+    public void ForceAlert_Should_ClearPendingRequest_WhenDisabled()
+    {
+        var source = CreateForceSource(pressCount: 2);
+
+        source.HandleKeyPress(KeyName, HotkeyModifiers.None, Now);
+        source.HandleKeyPress(KeyName, HotkeyModifiers.None, Now.AddMilliseconds(300));
+        Assert.True(source.TryConsumeForceRequest(Now.AddMilliseconds(400)));
+
+        // 未启用时清空内部状态（含连按计数与挂起请求）
+        source.IsEnabled = false;
+        source.Decide(Context(0.0), Now.AddSeconds(1));
+
+        Assert.False(source.TryConsumeForceRequest(Now.AddSeconds(2)));
+    }
+
+    [Fact]
+    public void ForceAlert_Should_ResetPressCount_WhenNormalConfirmationSucceeded()
+    {
+        var source = CreateForceSource(pressCount: 2);
+        source.Decide(Context(120.0), Now);
+
+        // 窗口内命中一次：走正常确认，之前累积的连按计数应被清掉
+        Assert.True(source.HandleKeyPress(KeyName, HotkeyModifiers.None, Now.AddMilliseconds(100)));
+
+        var decision = source.Decide(Context(120.0), Now.AddMilliseconds(200));
+        Assert.True(decision.ShouldAlert);
+    }
+
+    // ---- 连续超阈时长 ----
+
+    /// <summary>按 250 ms 节拍推进判定（模拟真实采样，避免触发 SustainedDurationTracker 的 MaxGap 中断），返回期间是否曾开窗。</summary>
+    private static bool AnyWindowOpened(HotkeyConfirmDecisionSource source, double averageDb, DateTime startUtc, TimeSpan span)
+    {
+        var step = TimeSpan.FromMilliseconds(250);
+        for (var t = TimeSpan.Zero; t <= span; t += step)
+        {
+            source.Decide(Context(averageDb), startUtc + t);
+            if (source.IsWindowOpen) return true;
+        }
+
+        return false;
+    }
+
+    [Fact]
+    public void Decide_Should_NotOpenWindow_BeforeSustainDurationElapsed()
+    {
+        var source = CreateSource();
+        source.SustainThreshold = TimeSpan.FromSeconds(5);
+
+        Assert.False(AnyWindowOpened(source, 120.0, Now, TimeSpan.FromSeconds(4)));
+        // 未满足持续性要求时仍应显示"超阈值"，否则状态点与读数自相矛盾
+        Assert.True(source.IsTriggerActive);
+    }
+
+    [Fact]
+    public void Decide_Should_OpenWindow_OnceSustainDurationElapsed()
+    {
+        var source = CreateSource();
+        source.SustainThreshold = TimeSpan.FromSeconds(5);
+
+        Assert.True(AnyWindowOpened(source, 120.0, Now, TimeSpan.FromSeconds(6)));
+    }
+
+    [Fact]
+    public void Decide_Should_OpenWindowImmediately_WhenSustainThresholdIsZero()
+    {
+        var source = CreateSource();
+        source.SustainThreshold = TimeSpan.Zero;
+
+        source.Decide(Context(120.0), Now);
+
+        Assert.True(source.IsWindowOpen);
+    }
+
+    // ---- 探测与观察（P1 两段式） ----
+
+    [Fact]
+    public void WouldAlert_Should_BeTrue_OnlyWhileWindowOpenWithConfirmedKey()
+    {
+        var source = CreateSource();
+        Assert.False(source.WouldAlert(Context(120.0), Now));
+
+        // 开窗但未确认：不满足提醒条件
+        source.Decide(Context(120.0), Now);
+        Assert.False(source.WouldAlert(Context(120.0), Now.AddSeconds(1)));
+
+        source.HandleKeyPress(KeyName, HotkeyModifiers.None, Now.AddSeconds(1));
+        Assert.True(source.WouldAlert(Context(120.0), Now.AddSeconds(1)));
+    }
+
+    [Fact]
+    public void WouldAlert_Should_NotMutateWindowState()
+    {
+        var source = CreateSource();
+        source.Decide(Context(120.0), Now);
+
+        // 即使已越过窗口截止时间，探测也不得关窗（状态推进只能由 Decide/Observe 完成）
+        source.WouldAlert(Context(120.0), Now + Window + TimeSpan.FromSeconds(1));
+
+        Assert.True(source.IsWindowOpen);
+    }
+
+    [Fact]
+    public void Observe_Should_ConsumeConfirmation_WithoutAlerting()
+    {
+        var source = CreateSource(cooldown: TimeSpan.FromMinutes(5));
+        source.Decide(Context(120.0), Now);
+        source.HandleKeyPress(KeyName, HotkeyModifiers.None, Now.AddSeconds(1));
+
+        var observed = source.Observe(Context(120.0), Now.AddSeconds(1));
+
+        // 未被选为目标源：确认按"已给过一次机会"落地（关窗 + 写冷却），但不发提醒
+        Assert.False(observed.ShouldAlert);
+        Assert.False(source.IsWindowOpen);
+        Assert.Equal(Now.AddSeconds(1).AddMinutes(5), source.NextAlertTimeUtc);
+    }
 }

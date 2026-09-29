@@ -29,6 +29,8 @@
     <Compile Include="..\..\Alerting\AlertDecisionCoordinator.cs" Link="Alerting\AlertDecisionCoordinator.cs" />
     <Compile Include="..\..\Alerting\IndicatorStateResolver.cs" Link="Alerting\IndicatorStateResolver.cs" />
     <Compile Include="..\..\Alerting\ScheduleGate.cs" Link="Alerting\ScheduleGate.cs" />
+    <Compile Include="..\..\Alerting\SustainedDurationTracker.cs" Link="Alerting\SustainedDurationTracker.cs" />
+    <Compile Include="..\..\Alerting\TemporaryAlertOverride.cs" Link="Alerting\TemporaryAlertOverride.cs" />
     <Compile Include="..\..\Measurement\PeakSample.cs" Link="Measurement\PeakSample.cs" />
   </ItemGroup>
 

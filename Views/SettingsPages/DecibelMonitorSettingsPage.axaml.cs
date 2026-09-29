@@ -53,6 +53,46 @@ public partial class DecibelMonitorSettingsPage : SettingsPageBase
     public bool KeyboardCaptureAvailable { get; }
 
     /// <summary>
+    /// 确认热键的候选键名（供设置页下拉选择）。
+    /// </summary>
+    /// <remarks>
+    /// 键名取自 KeyboardCapture 契约里的 <see cref="KeyboardKeys"/> 字符串常量（该契约没有键名枚举，
+    /// 无法用 <c>Enum.GetValues</c> 生成）。只列常用键；若设置里的当前值不在清单内（旧版本允许手输，
+    /// 可能是小键盘或媒体键），由 <see cref="BuildHotkeyKeyOptions"/> 把该值插入首位保留。
+    /// </remarks>
+    public ObservableCollection<string> HotkeyKeyOptions { get; } = new();
+
+    /// <summary>下拉里的常用键，按“功能键 → 字母 → 数字 → 编辑与导航键”分组排列。</summary>
+    private static readonly string[] CommonHotkeyKeys =
+    {
+        // 功能键
+        KeyboardKeys.F1, KeyboardKeys.F2, KeyboardKeys.F3, KeyboardKeys.F4, KeyboardKeys.F5,
+        KeyboardKeys.F6, KeyboardKeys.F7, KeyboardKeys.F8, KeyboardKeys.F9, KeyboardKeys.F10,
+        KeyboardKeys.F11, KeyboardKeys.F12, KeyboardKeys.F13, KeyboardKeys.F14, KeyboardKeys.F15,
+        KeyboardKeys.F16, KeyboardKeys.F17, KeyboardKeys.F18, KeyboardKeys.F19, KeyboardKeys.F20,
+        KeyboardKeys.F21, KeyboardKeys.F22, KeyboardKeys.F23, KeyboardKeys.F24,
+
+        // 字母键
+        KeyboardKeys.A, KeyboardKeys.B, KeyboardKeys.C, KeyboardKeys.D, KeyboardKeys.E,
+        KeyboardKeys.F, KeyboardKeys.G, KeyboardKeys.H, KeyboardKeys.I, KeyboardKeys.J,
+        KeyboardKeys.K, KeyboardKeys.L, KeyboardKeys.M, KeyboardKeys.N, KeyboardKeys.O,
+        KeyboardKeys.P, KeyboardKeys.Q, KeyboardKeys.R, KeyboardKeys.S, KeyboardKeys.T,
+        KeyboardKeys.U, KeyboardKeys.V, KeyboardKeys.W, KeyboardKeys.X, KeyboardKeys.Y,
+        KeyboardKeys.Z,
+
+        // 主键盘数字键
+        KeyboardKeys.Digit0, KeyboardKeys.Digit1, KeyboardKeys.Digit2, KeyboardKeys.Digit3,
+        KeyboardKeys.Digit4, KeyboardKeys.Digit5, KeyboardKeys.Digit6, KeyboardKeys.Digit7,
+        KeyboardKeys.Digit8, KeyboardKeys.Digit9,
+
+        // 编辑与导航键
+        KeyboardKeys.Space, KeyboardKeys.Enter, KeyboardKeys.Escape, KeyboardKeys.Tab,
+        KeyboardKeys.Backspace, KeyboardKeys.Delete, KeyboardKeys.Insert, KeyboardKeys.Home,
+        KeyboardKeys.End, KeyboardKeys.PageUp, KeyboardKeys.PageDown, KeyboardKeys.ArrowUp,
+        KeyboardKeys.ArrowDown, KeyboardKeys.ArrowLeft, KeyboardKeys.ArrowRight,
+    };
+
+    /// <summary>
     /// 供 XAML 资源加载器 / 设计器使用的默认构造。
     /// </summary>
     public DecibelMonitorSettingsPage() : this(new DecibelMonitorSettingsService(null), null, null)
@@ -71,9 +111,34 @@ public partial class DecibelMonitorSettingsPage : SettingsPageBase
         KeyboardCaptureAvailable = IAppHost.TryGetService<IKeyboardCaptureService>() is not null;
 
         DataContext = this;
+        BuildHotkeyKeyOptions();
         RebuildPriorityItems();
         RefreshDefaultDeviceText();
         RefreshMagnificationText();
+    }
+
+    /// <summary>
+    /// 重建确认热键下拉的候选项。
+    /// </summary>
+    /// <remarks>
+    /// 必须保证设置值一定能在清单里找到：<c>ComboBox.SelectedItem</c> 与设置双向绑定时，
+    /// 若当前值不在候选项内，控件匹配不到项会把选中项置空并写回设置，导致键名被静默清空
+    /// ——而键名为空时热键永远无法命中、筛选窗口永不打开。因此把清单外的存量值插到首位。
+    /// </remarks>
+    private void BuildHotkeyKeyOptions()
+    {
+        HotkeyKeyOptions.Clear();
+
+        var current = GlobalSettings.HotkeyKey;
+        if (!string.IsNullOrWhiteSpace(current) && !CommonHotkeyKeys.Contains(current))
+        {
+            HotkeyKeyOptions.Add(current);
+        }
+
+        foreach (var key in CommonHotkeyKeys)
+        {
+            HotkeyKeyOptions.Add(key);
+        }
     }
 
     /// <summary>
