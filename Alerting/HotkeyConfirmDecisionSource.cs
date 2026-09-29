@@ -196,6 +196,21 @@ public sealed class HotkeyConfirmDecisionSource : IAlertDecisionSource
     }
 
     /// <inheritdoc />
+    public bool WouldAlert(AlertContext context, DateTime nowUtc) =>
+        // 窗口开启且已命中热键：HandleKeyPress 接受按键时已校验过"未超时"，
+        // 因此该组合即等价于"此刻调用 Decide 会返回 ShouldAlert"。
+        IsEnabled && IsWindowOpen && _confirmed;
+
+    /// <inheritdoc />
+    public AlertDecision Observe(AlertContext context, DateTime nowUtc)
+    {
+        // 推进本拍状态（含开窗、确认兑现、超时关窗并写冷却），但不发出提醒：
+        // 保证同一拍最多只有被仲裁选中的目标源产生一条通知（计划 §21.1）。
+        var decision = Decide(context, nowUtc);
+        return decision with { ShouldAlert = false };
+    }
+
+    /// <inheritdoc />
     public AlertDecision Decide(AlertContext context, DateTime nowUtc)
     {
         if (!IsEnabled)

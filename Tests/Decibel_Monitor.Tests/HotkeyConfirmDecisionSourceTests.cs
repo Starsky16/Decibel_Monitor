@@ -571,4 +571,47 @@ public class HotkeyConfirmDecisionSourceTests
 
         Assert.True(source.IsWindowOpen);
     }
+
+    // ---- 探测与观察（P1 两段式） ----
+
+    [Fact]
+    public void WouldAlert_Should_BeTrue_OnlyWhileWindowOpenWithConfirmedKey()
+    {
+        var source = CreateSource();
+        Assert.False(source.WouldAlert(Context(120.0), Now));
+
+        // 开窗但未确认：不满足提醒条件
+        source.Decide(Context(120.0), Now);
+        Assert.False(source.WouldAlert(Context(120.0), Now.AddSeconds(1)));
+
+        source.HandleKeyPress(KeyName, HotkeyModifiers.None, Now.AddSeconds(1));
+        Assert.True(source.WouldAlert(Context(120.0), Now.AddSeconds(1)));
+    }
+
+    [Fact]
+    public void WouldAlert_Should_NotMutateWindowState()
+    {
+        var source = CreateSource();
+        source.Decide(Context(120.0), Now);
+
+        // 即使已越过窗口截止时间，探测也不得关窗（状态推进只能由 Decide/Observe 完成）
+        source.WouldAlert(Context(120.0), Now + Window + TimeSpan.FromSeconds(1));
+
+        Assert.True(source.IsWindowOpen);
+    }
+
+    [Fact]
+    public void Observe_Should_ConsumeConfirmation_WithoutAlerting()
+    {
+        var source = CreateSource(cooldown: TimeSpan.FromMinutes(5));
+        source.Decide(Context(120.0), Now);
+        source.HandleKeyPress(KeyName, HotkeyModifiers.None, Now.AddSeconds(1));
+
+        var observed = source.Observe(Context(120.0), Now.AddSeconds(1));
+
+        // 未被选为目标源：确认按"已给过一次机会"落地（关窗 + 写冷却），但不发提醒
+        Assert.False(observed.ShouldAlert);
+        Assert.False(source.IsWindowOpen);
+        Assert.Equal(Now.AddSeconds(1).AddMinutes(5), source.NextAlertTimeUtc);
+    }
 }

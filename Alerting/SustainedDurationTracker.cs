@@ -58,6 +58,26 @@ public sealed class SustainedDurationTracker
         return nowUtc - _conditionSinceUtc >= duration;
     }
 
+    /// <summary>
+    /// 在<strong>不推进计时状态</strong>的前提下，判断条件是否已连续成立至少 <paramref name="duration"/>。
+    /// 判定口径与 <see cref="Update"/> 完全一致（含 <see cref="MaxGap"/> 中断），供仲裁模块的探测阶段使用。
+    /// </summary>
+    /// <param name="condition">本次观察到的条件是否成立。</param>
+    /// <param name="nowUtc">当前时间（UTC）。</param>
+    /// <param name="duration">要求的连续时长；为 0 或负值时不做持续性要求，直接返回 <paramref name="condition"/>。</param>
+    public bool IsSustained(bool condition, DateTime nowUtc, TimeSpan duration)
+    {
+        if (duration <= TimeSpan.Zero) return condition;
+        if (!condition) return false;
+        // 尚未开始计时：Update 在同样情形下会把起点设为本拍、结果为"未满足"
+        if (_conditionSinceUtc == DateTime.MinValue) return false;
+
+        var gapBroken = _lastUpdateUtc != DateTime.MinValue && nowUtc - _lastUpdateUtc > MaxGap;
+        if (gapBroken) return false;
+
+        return nowUtc - _conditionSinceUtc >= duration;
+    }
+
     /// <summary>清空计时，下次调用重新起算。</summary>
     public void Reset()
     {

@@ -53,6 +53,25 @@ public interface IAlertDecisionSource
     bool IsCoolingDown(DateTime nowUtc);
 
     /// <summary>
+    /// 探测本拍是否满足提醒条件（供仲裁模块按优先级选出唯一目标源）。
+    /// <strong>不得改变任何内部状态</strong>——仲裁要求所有判定源在同一份"谁都没推进过"的快照上被比较；
+    /// 返回值须与"此刻调用 <see cref="Decide"/> 是否会返回 ShouldAlert"一致。
+    /// </summary>
+    /// <param name="context">当前判定上下文。</param>
+    /// <param name="nowUtc">当前时间（UTC）。</param>
+    bool WouldAlert(AlertContext context, DateTime nowUtc);
+
+    /// <summary>
+    /// 推进本拍状态但<strong>不发出提醒</strong>（供本拍未被选为目标源的判定源调用）。
+    /// 内部状态推进与 <see cref="Decide"/> 完全一致（含条件满足时照常写入冷却、关闭筛选窗口），
+    /// 只是提醒被抑制：它保证同一拍最多产生一条通知，且被抑制的判定源不会在下一拍补发第二条
+    /// （其本次条件按"已给过一次机会"落地，而不是顺延兑现）。
+    /// </summary>
+    /// <param name="context">当前判定上下文。</param>
+    /// <param name="nowUtc">当前时间（UTC）。</param>
+    AlertDecision Observe(AlertContext context, DateTime nowUtc);
+
+    /// <summary>
     /// 依据当前上下文判定是否提醒。未启用时应返回"不提醒"并清空内部状态。
     /// </summary>
     /// <param name="context">当前判定上下文。</param>

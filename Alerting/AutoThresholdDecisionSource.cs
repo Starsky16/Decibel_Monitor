@@ -57,6 +57,27 @@ public sealed class AutoThresholdDecisionSource : IAlertDecisionSource
         IsEnabled && _nextAlertTimeUtc != DateTime.MinValue && nowUtc < _nextAlertTimeUtc;
 
     /// <inheritdoc />
+    public bool WouldAlert(AlertContext context, DateTime nowUtc)
+    {
+        if (!IsEnabled) return false;
+
+        // 阈值比较为严格大于：等于阈值不算超阈值（与 Decide 同口径）
+        if (!(context.AverageDecibel > Threshold)) return false;
+        if (!_sustainTracker.IsSustained(true, nowUtc, SustainThreshold)) return false;
+
+        return nowUtc >= _nextAlertTimeUtc;
+    }
+
+    /// <inheritdoc />
+    public AlertDecision Observe(AlertContext context, DateTime nowUtc)
+    {
+        // 推进本拍状态（含条件满足时照常写入冷却），但不发出提醒：
+        // 保证同一拍最多只有被仲裁选中的目标源产生一条通知（计划 §21.1）。
+        var decision = Decide(context, nowUtc);
+        return decision with { ShouldAlert = false };
+    }
+
+    /// <inheritdoc />
     public AlertDecision Decide(AlertContext context, DateTime nowUtc)
     {
         if (!IsEnabled)
