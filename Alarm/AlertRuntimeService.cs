@@ -135,6 +135,22 @@ public sealed class AlertRuntimeService : IHostedService, IDisposable
         DecibelNotificationProvider.Instance?.Notify();
     }
 
+    /// <summary>
+    /// 兑现一次"应急强制提醒"：发通知并进入防自激、清空样本窗口。
+    /// </summary>
+    /// <remarks>
+    /// 冷却写入与筛选窗口作废由判定源在
+    /// <see cref="HotkeyConfirmDecisionSource.TryConsumeForceRequest"/> 内一并完成。
+    /// 本路径<strong>不经过仲裁模块</strong>：时段闸门生效时会整拍跳过 <c>_coordinator.Decide</c>，
+    /// 而强制通道按要求必须无视闸门，放进判定链必然被闸门掐死。
+    /// </remarks>
+    private void IssueForcedAlert()
+    {
+        DecibelNotificationProvider.Instance?.Notify();
+        _pauseUntilUtc = DateTime.UtcNow.Add(AntiSelfKickDelay);
+        _window.Clear();
+    }
+
     // 异步 Tick：全程保持在 DispatcherTimer 绑定的 UI 线程上下文（不就地切线程），
     // 与热键确认封送回 UI 线程的处理保持一致，避免判定源状态被并发修改。
     private async void Timer_Tick(object? sender, EventArgs e)
@@ -144,6 +160,15 @@ public sealed class AlertRuntimeService : IHostedService, IDisposable
         try
         {
             ApplySettings();
+
+            // 应急强制提醒：1 秒内连按确认热键 N 次即立即提醒，无视阈值、冷却期与时段闸门。
+            // 必须放在防自激之前——提醒执行后的 3 秒内整拍不推进，若检查在其之后，
+            // 这段时间内的连按会"按了没反应"（而这恰是最可能想再提醒一次的时刻）。
+            if (_hotkeySource.TryConsumeForceRequest(DateTime.UtcNow))
+            {
+                IssueForcedAlert();
+                return;
+            }
 
             // 防自激：执行提醒后 3 秒内暂停采样与判定
             if (DateTime.UtcNow < _pauseUntilUtc) return;
@@ -353,12 +378,16 @@ public sealed class AlertRuntimeService : IHostedService, IDisposable
         _autoSource.IsEnabled = settings.AutoSourceEnabled;
         _autoSource.Threshold = settings.AutoSourceThreshold;
         _autoSource.Cooldown = TimeSpan.FromSeconds(Math.Max(MinCooldownSeconds, settings.AutoSourceCooldownSeconds));
+        _autoSource.SustainThreshold = TimeSpan.FromSeconds(Math.Clamp(settings.AutoSourceSustainSeconds, 0, 60));
 
         _hotkeySource.IsEnabled = settings.HotkeySourceEnabled;
         _hotkeySource.Threshold = settings.HotkeySourceThreshold;
         _hotkeySource.Cooldown = TimeSpan.FromSeconds(Math.Max(MinCooldownSeconds, settings.HotkeySourceCooldownSeconds));
         _hotkeySource.WindowTimeout = TimeSpan.FromSeconds(Math.Clamp(settings.HotkeyWindowSeconds, 1, 600));
         _hotkeySource.Hotkey = new HotkeyDefinition(settings.HotkeyKey ?? string.Empty, ComposeModifiers(settings));
+        _hotkeySource.ForceAlertEnabled = settings.ForceAlertEnabled;
+        _hotkeySource.ForceAlertPressCount = Math.Clamp(settings.ForceAlertPressCount, 2, 10);
+        _hotkeySource.SustainThreshold = TimeSpan.FromSeconds(Math.Clamp(settings.HotkeySourceSustainSeconds, 0, 60));
 
         // 优先级顺序变化时才重排（避免每拍重复排序）
         var order = settings.SourcePriorityOrder;
