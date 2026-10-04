@@ -28,24 +28,33 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # 非 [build] 提交不构建：手动触发不受此限制
+      # 非 [build] 提交不构建：手动触发不受此限制。
+      # ⚠️ 不能用金标准（format_factory_Android）的 exit 78——那是 Azure DevOps 的 neutral 语义，
+      # GitHub Actions 实测会把 exit 78 标成 failure（2026-10-04 在本仓库验证）。
+      # 改用 step output 闸门：go=false 时后续构建步骤全部跳过，run 整体保持绿色。
       - name: Skip unless latest commit message contains [build]
+        id: gate
         if: github.event_name == 'push'
         env:
           SUBJECT: ${{ github.event.head_commit.message }}
         shell: bash
         run: |
-          if ! printf '%s' "$SUBJECT" | grep -q '\[build\]'; then
+          if printf '%s' "$SUBJECT" | grep -q '\[build\]'; then
+            echo "最新提交含 [build] 标记，继续 dev 构建"
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          else
             echo "最新提交不含 [build] 标记，跳过 dev 构建"
-            exit 78 # neutral：标记为跳过而非失败
+            echo "go=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Install .NET Core
+        if: steps.gate.outputs.go != 'false'
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.x
 
       - name: Cache NuGet packages
+        if: steps.gate.outputs.go != 'false'
         uses: actions/cache@v4
         with:
           path: ~/.nuget/packages
@@ -54,15 +63,19 @@ jobs:
             ${{ runner.os }}-nuget-
 
       - name: Build
+        if: steps.gate.outputs.go != 'false'
         run: pwsh -ep bypass ./tools/publish.ps1
 
       - name: Test
+        if: steps.gate.outputs.go != 'false'
         run: dotnet test Tests/Decibel_Monitor.Tests/Decibel_Monitor.Tests.csproj -c Release
 
       - name: Md5Checksum
+        if: steps.gate.outputs.go != 'false'
         run: pwsh -ep bypass ./tools/generate-md5.ps1 cipx/
 
       - name: Publish prerelease dev-build
+        if: steps.gate.outputs.go != 'false'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
