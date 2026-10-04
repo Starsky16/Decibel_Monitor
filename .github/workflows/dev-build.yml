@@ -1,0 +1,87 @@
+name: Dev Build (预发布)
+
+# dev 分支的"发布级验证包"：把插件 .cipx 打包挪到云端，减轻本地设备压力。
+# 触发方式：
+#   1. Actions 页手动触发（workflow_dispatch）
+#   2. 推送到 dev 且**最新一条 commit message 含 [build]** 时自动触发
+# 产物发布到固定 tag dev-build 的 pre-release，每次构建覆盖更新——
+# Releases 页始终只有一个预发布条目，不会刷成流水账。
+# 正式发版仍走 Build.yml（a.b.c.d 四段数字 tag），互不干扰。
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [dev]
+
+# 同一时刻只保留一条 dev 构建在跑，新提交顶掉旧构建
+concurrency:
+  group: dev-build
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build & publish dev-build prerelease
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 非 [build] 提交不构建：手动触发不受此限制
+      - name: Skip unless latest commit message contains [build]
+        if: github.event_name == 'push'
+        env:
+          SUBJECT: ${{ github.event.head_commit.message }}
+        shell: bash
+        run: |
+          if ! printf '%s' "$SUBJECT" | grep -q '\[build\]'; then
+            echo "最新提交不含 [build] 标记，跳过 dev 构建"
+            exit 78 # neutral：标记为跳过而非失败
+          fi
+
+      - name: Install .NET Core
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.x
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Build
+        run: pwsh -ep bypass ./tools/publish.ps1
+
+      - name: Test
+        run: dotnet test Tests/Decibel_Monitor.Tests/Decibel_Monitor.Tests.csproj -c Release
+
+      - name: Md5Checksum
+        run: pwsh -ep bypass ./tools/generate-md5.ps1 cipx/
+
+      - name: Publish prerelease dev-build
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 固定 tag dev-build：先删旧 Release（连 tag），再在当前提交上重建
+          gh release delete dev-build --yes --cleanup-tag || true
+          {
+            echo "自动构建于 GitHub Actions（dev 分支预发布，随时可能被覆盖更新），"
+            echo "可用下方 .cipx 安装（ClassIsland 声级计插件包，导入 ClassIsland 插件市场本地包）。"
+            echo ""
+            echo "- 提交：${GITHUB_SHA::7} $(git log -1 --format=%s)"
+            echo "- 构建时间：$(date -u '+%Y-%m-%d %H:%M UTC')"
+            echo "- 稳定版请用 [正式 Release](https://github.com/${GITHUB_REPOSITORY}/releases/latest)"
+            echo ""
+            cat cipx/checksums.md
+          } > "$RUNNER_TEMP/notes.md"
+          gh release create dev-build \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "dev 预构建 · ${GITHUB_SHA::7}" \
+            --notes-file "$RUNNER_TEMP/notes.md" \
+            ./cipx/*.cipx
