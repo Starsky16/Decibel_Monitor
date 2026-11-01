@@ -1,22 +1,10 @@
 # Decibel_Monitor
 
+一个用于 ClassIsland 的分贝监测插件：在主界面实时显示麦克风分贝值，吵闹时自动弹出提醒，还能按课表时段自动静默，或一键临时静默 / 临时开启。
+
 > **AI 辅助说明**：本项目使用 AI 辅助生成，大部分代码由 AI 编写，作者负责审查其行为并保证功能与测试正常。
-
-> **关于本仓库**：本仓库是 [Yeson38/Decibel_Monitor](https://github.com/Yeson38/Decibel_Monitor) 的 fork。原项目及主要开发者是 [Yeson38](https://github.com/Yeson38)，本 fork 由 [Starsky16](https://github.com/Starsky16) 独立维护（保留原作者署名）。
 >
-> 本 fork **独立演进**：相比原作者仓库的 `master` 已包含下列改动；它们曾以 PR [#6](https://github.com/Yeson38/Decibel_Monitor/pull/6)~[#13](https://github.com/Yeson38/Decibel_Monitor/pull/13) 提交上游，但上游自 2026-02 起停止维护，这些 PR 均未合并。现本 fork 独立维护，**后续改动不再向上游提 PR**。安装请从本仓库的 [Releases](https://github.com/Starsky16/Decibel_Monitor/releases) 下载 `.cipx`。
->
-> - 麦克风采样与计算核心重构：抽取共享采样服务、常驻静默捕获流、设备枚举与一次性采样分离；
-> - 组件与设置重构：设置分布收敛为「测量全局 / 显示随组件 / 提醒在通知」三处，新增插件设置页并把校准上收为全局设置；
-> - 阈值提醒：新增「分贝提醒」通知提供方与提醒渠道；
-> - 判定源框架：①超过阈值自动提醒、②超过阈值开筛选窗口并在窗口内按确认热键才提醒（需 KeyboardCapture 插件），各判定源带独立冷却；
-> - 防抖增强：各判定源可选「连续超阈时长」（与平均窗口正交）；判定源②的确认热键改为下拉选择，并新增「应急强制提醒」（连按确认热键若干次即立即提醒）；
-> - 提醒状态点：组件上以形状与呼吸表达当前状态，数字颜色随判据变化并带滞回；
-> - 时段闸门：课间休息与每节课开头若干分钟内抑制提醒，且抑制期间不占用冷却；
-> - 临时静默 / 临时开启：托盘菜单与自动化行动可临时停掉或临时打开提醒，到点自动恢复；
-> - 提醒正文时长可在通知提供方处配置，冷却时长下限提升至 60 秒。
-
-一个用于 ClassIsland 的分贝监测插件，通过一条常驻的低开销捕获流实时读取麦克风峰值并在主界面显示分贝映射值。支持全局校准（将数字音频幅度映射到目标 dBFS），并可通过系统实时计量作为补充。
+> **关于本仓库**：本仓库是 [Yeson38/Decibel_Monitor](https://github.com/Yeson38/Decibel_Monitor) 的 fork。原项目及主要开发者是 [Yeson38](https://github.com/Yeson38)，本 fork 由 [Starsky16](https://github.com/Starsky16) 独立维护（保留原作者署名）。上游自 2026-02 起停止维护，曾提交的 PR [#6](https://github.com/Yeson38/Decibel_Monitor/pull/6)~[#13](https://github.com/Yeson38/Decibel_Monitor/pull/13) 均未合并，本 fork **独立演进，后续改动不再向上游提 PR**（相比上游的全部改动见下方[「相对上游的改动」](#相对上游的改动)）。安装请从本仓库的 [Releases](https://github.com/Starsky16/Decibel_Monitor/releases) 下载 `.cipx`。
 
 ## 主要功能
 
@@ -115,47 +103,7 @@
 - 判据带 2 dB 的迟滞，避免数值在阈值附近反复跳色（进入需超过阈值，退出需低于“阈值 − 2”）。
 - 无采样或未启用任何判定源时不设置颜色，沿用宿主默认文字色。
 
-**关于“显示值与判定值不一致”（有意保留的口径差异）**：组件上显示的分贝是**瞬时值**，而提醒判定（开筛选窗口、自动提醒）与上面的数字颜色判据用的是**滑动平均值**。因此下面两种错觉都可能出现，属于既定行为、不是缺陷：
-
-- **读数看着不高却变红 / 变三角**：窗口平均值已被之前的一小段高值拉高，瞬时值回落但平均仍超阈值。
-- **读数明明很高却没有提醒**：单次尖峰被平均窗口摊薄，平均值尚未过线；若想减少这类情况，可调小平均窗口（更灵敏）或依赖判定源②的按键确认。
-
-想让两者口径一致就得二选一：显示改成平均值（数字会变得粘滞、响应迟钝），或判定改用瞬时值（单点尖峰就会误触发），两者都被否决，故如实写明由使用者自行取舍。
-
-### 校准公式
-
-- 测量得到的线性峰值：`measuredLinear`（0..1）
-- 目标线性值：`targetLinear = 10^(targetDbFS / 20)`
-- 放大倍数：`magnification = targetLinear / measuredLinear`
-
-插件会对计算结果做上限保护（默认上限 1024；下限可为 0），以避免极端错误值。
-
-## 设置项
-
-### ① 组件设置（`DecibelComponentSettings`，每组件独立）
-
-- `ShowStatusIndicator` (bool)：是否在组件上显示提醒状态点，默认 true；关闭后仍会正常发出系统通知，只是不在组件上显示状态点（形状含义见“提醒状态点”）。
-- `ShowDecibelPrefix` (bool)：数值前是否显示“分贝:”前缀（如“分贝: 70.0”），默认 true。
-- `UpdateIntervalMs` (int)：数值更新频率（毫秒，运行时会夹取到 100..5000），默认 200。
-
-### ② 通知提供方设置（`DecibelNotificationProviderSettings`，全局）
-
-- `AlertText` (string)：提醒正文（通知横幅显示的文字），默认“请保持安静”。
-- `OverlayDurationSeconds` (int)：提醒正文（第二段）的显示时长（秒，面板范围 1..600，运行时夹取 1..600），默认 30。一次提醒由遮罩（固定 5 秒，宿主 `NotificationContent` 默认值）与正文两段拼成且文案相同，故**一次提醒的总时长 = 5 秒 + 本值**；总时长比判定源的冷却时间短时，提醒结束后才能看到冷却期的状态点。启用开关、阈值与冷却**不在此处**，由插件设置页的判定源负责（避免“判定源已裁定提醒、提供方却因自身阈值不发通知”的双重门槛）。
-
-### ③ 插件全局设置（`DecibelMonitorGlobalSettings`）
-
-- `ReferenceDecibel` (double)：校准参考（显示刻度 dB 0..150），默认 70（对应 -80 dBFS）。
-- `Magnification` (double)：全局放大倍数，校准后保存，所有组件统一使用。
-- `EnableContinuousMonitoring` (bool)：是否启用“持续监听麦克风”（常驻静默捕获流），默认 true。关闭后仅使用系统实时计量，多数设备会一直显示 0。
-- `FallbackCaptureMs` (int)：显式采样（如校准）的单次录音时长（毫秒），默认 400。
-- `SignalThreshold` (double)：信号检测阈值（存在配置文件中，可在采样异常时调低）。
-- `AverageWindowSeconds` (double)：判定源比较的平均窗口时长（秒），默认 3。
-- `SourcePriorityOrder` (`List<string>`)：判定源优先级顺序，默认“自动提醒”在前。
-- 时段闸门（对两个判定源生效）：`SuppressAlertDuringBreak` (bool，默认 true)、`ClassStartProtectionMinutes` (int，默认 3，运行时夹取到 0..10，0 表示关闭该保护)。
-- 临时静默 / 临时开启：「静默本节课」取不到本节课剩余时间时的兜底时长 `SilenceFallbackMinutes` (int，默认 45，运行时夹取到 1..1440)、“静默一个午”的时长 `NoonSilenceMinutes` (int，默认 60，同样夹取)。覆盖状态本身不写进设置（不持久化）。
-- 判定源①（自动提醒）：`AutoSourceEnabled` (bool)、`AutoSourceThreshold` (double，默认 120)、`AutoSourceCooldownSeconds` (int，默认 600)、`AutoSourceSustainSeconds` (int，默认 0，运行时夹取到 0..60，0 表示不做持续性要求)。
-- 判定源②（热键确认）：`HotkeySourceEnabled` (bool)、`HotkeySourceThreshold` (double，默认 120)、`HotkeySourceCooldownSeconds` (int，默认 600)、`HotkeySourceSustainSeconds` (int，默认 0，夹取同判定源①)、`HotkeyWindowSeconds` (int，默认 10)、`HotkeyKey` (string，默认 `F5`) 与 `HotkeyCtrl` / `HotkeyAlt` / `HotkeyShift` / `HotkeyMeta` (bool)、应急强制提醒 `ForceAlertEnabled` (bool，默认 false) 与 `ForceAlertPressCount` (int，默认 2，运行时夹取到 2..10)。
+> **为什么“显示值”和“判定值”会对不上？** 组件上显示的是**瞬时值**，而提醒判定与数字颜色判据用的是**滑动平均值**，因此可能出现“读数看着不高却变红”或“读数明明很高却没提醒”两种错觉，属于既定行为、不是缺陷。完整说明见 [CONTRIBUTING.md](CONTRIBUTING.md#显示值与判定值不一致有意保留的口径差异)。
 
 ## 故障排查
 
@@ -182,12 +130,24 @@
 - 插件需要访问麦克风进行本地采样，宿主必须授予麦克风权限。
 - 插件不会上传或外传音频数据，所有采样仅在本地处理。
 
+## 相对上游的改动
+
+本 fork 相比上游 `master` 的主要改动：
+
+- 麦克风采样与计算核心重构：抽取共享采样服务、常驻静默捕获流、设备枚举与一次性采样分离；
+- 组件与设置重构：设置分布收敛为「测量全局 / 显示随组件 / 提醒在通知」三处，新增插件设置页并把校准上收为全局设置；
+- 阈值提醒：新增「分贝提醒」通知提供方与提醒渠道；
+- 判定源框架：①超过阈值自动提醒、②超过阈值开筛选窗口并在窗口内按确认热键才提醒（需 KeyboardCapture 插件），各判定源带独立冷却；
+- 防抖增强：各判定源可选「连续超阈时长」（与平均窗口正交）；判定源②的确认热键改为下拉选择，并新增「应急强制提醒」（连按确认热键若干次即立即提醒）；
+- 提醒状态点：组件上以形状与呼吸表达当前状态，数字颜色随判据变化并带滞回；
+- 时段闸门：课间休息与每节课开头若干分钟内抑制提醒，且抑制期间不占用冷却；
+- 临时静默 / 临时开启：托盘菜单与自动化行动可临时停掉或临时打开提醒，到点自动恢复；
+- 提醒正文时长可在通知提供方处配置，冷却时长下限提升至 60 秒。
+
 ## 开发与贡献
 
-- 欢迎提交 issue 或 PR。请遵循仓库中的贡献指南（若存在 CONTRIBUTING.md）提交风格一致的修改。
-- 单元测试：`Tests/Decibel_Monitor.Tests` 覆盖计算器、采样、判定源、仲裁、状态解析与时段闸门等纯逻辑（Windows 环境运行 `dotnet test Tests/Decibel_Monitor.Tests`）。
+- 欢迎提交 issue 或 PR。构建、测试、打包方法与提交规范见 [CONTRIBUTING.md](CONTRIBUTING.md)；校准公式、设置项完整参考与设计口径说明等技术细节也收录在该文档。
 - Idea来自：[HAHAHAHAHAYINING](https://github.com/HAHAHAHAHAYINING),[讨论#561](https://github.com/ClassIsland/ClassIsland/discussions/561)
 - 原项目与主要开发者：[Yeson38](https://github.com/Yeson38)（原作者）
 - 本 fork 维护者（协作者）：[Starsky16](https://github.com/Starsky16)
 - 参考代码：[CIImage](https://github.com/lrsgzs/CIImage)
-
